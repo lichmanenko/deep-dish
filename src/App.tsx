@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadSettings, saveSettings, applyTheme, RADIALS, todayISO, type DeviceSettings } from './lib';
 import { track } from './store';
 import { computeBanner, dismissBanner, BANNER_CHECK_MS, type BannerInfo } from './banner';
+import { autoSync } from './sync';
 import { Onboarding } from './onboarding';
 import { TodayScreen } from './screen-today';
 import { AddScreen } from './screen-add';
@@ -37,6 +38,12 @@ export default function App() {
   }, [settings.palette, settings.theme]);
 
   useEffect(() => { track('app_open', { online: navigator.onLine, cold: true }); }, []);
+  useEffect(() => {
+    autoSync();
+    const h = () => autoSync();
+    window.addEventListener('online', h);
+    return () => window.removeEventListener('online', h);
+  }, []);
 
   // Мотивационные баннеры: при старте и каждые 5 минут (окно срыва зависит от времени)
   useEffect(() => {

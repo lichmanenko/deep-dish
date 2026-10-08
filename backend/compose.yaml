@@ -1,0 +1,9 @@
+services:
+  deepdish-sync:
+    build: .
+    container_name: deepdish-sync
+    restart: unless-stopped
+    ports:
+      - "8687:8687"
+    volumes:
+      - ./data:/data  # положите data/ на RAID-том NAS

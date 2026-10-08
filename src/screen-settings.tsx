@@ -5,6 +5,7 @@ import { db } from './db';
 import type { Slot } from './db';
 import { PALETTES, type DeviceSettings, todayISO } from './lib';
 import { loadFlags, saveFlags, detectDangerWindows, type FlagSettings } from './banner';
+import { loadSync, saveSync, registerDevice, runSync, syncStatusText, type SyncSettings } from './sync';
 import { exportJSON, exportCSV, download, wipeAll, track, importJSONText } from './store';
 import { Segmented, Confirm, Modal, Toggle } from './ui';
 
@@ -12,6 +13,37 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
   settings: DeviceSettings; setSettings: (s: DeviceSettings) => void; onRestartOnboarding: () => void;
 }) {
   const [confirmWipe, setConfirmWipe] = useState(false);
+  // Семья и синк (M2)
+  const [sync, setSync] = useState<SyncSettings | null>(() => loadSync());
+  const [srvAddr, setSrvAddr] = useState('');
+  const [nick, setNick] = useState('');
+  const [adminTok, setAdminTok] = useState('');
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  async function doRegister() {
+    if (syncBusy) return;
+    setSyncBusy(true); setSyncMsg(null);
+    try {
+      const srv = srvAddr.trim().replace(/\/$/, '');
+      const st = await registerDevice(srv, nick.trim() || 'я', adminTok.trim() || undefined);
+      saveSync(st); setSync(st);
+      setSyncMsg(`Подключено: ${st.nickname} (${st.role}). Теперь «Синхронизировать».`);
+    } catch (e) { setSyncMsg(`Не получилось: ${(e as Error).message}`); }
+    setSyncBusy(false);
+  }
+
+  async function doSync() {
+    if (syncBusy) return;
+    setSyncBusy(true); setSyncMsg(null);
+    try {
+      const r = await runSync();
+      setSyncMsg(r.ok ? `Синк прошёл: отправлено ${r.pushed}, получено ${r.pulled}.` : `Синк не удался: ${r.error}`);
+      setSync(loadSync());
+      track('sync_manual', { pushed: r.pushed, pulled: r.pulled });
+    } catch (e) { setSyncMsg(`Синк не удался: ${(e as Error).message}`); }
+    setSyncBusy(false);
+  }
   // импорт JSON (перенос каталога между устройствами)
   const fileJson = useRef<HTMLInputElement>(null);
   const [importMsg, setImportMsg] = useState<string | null>(null);
@@ -98,6 +130,37 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
               : <span className="text-xs" style={{ color: 'var(--mut)' }}>текущее время</span>}
           </div>
         ))}
+      </div>
+
+      <div className="dd-field-label">Семья и синк</div>
+      <div className="dd-card px-4 py-1">
+        {sync ? (
+          <>
+            <div className="py-3">
+              <div className="text-sm">{syncStatusText()}</div>
+              <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>{sync.server}</div>
+            </div>
+            <div className="flex gap-2 pb-3">
+              <button className="dd-action strong flex-1" disabled={syncBusy} onClick={doSync}>
+                {syncBusy ? 'Синхронизирую…' : 'Синхронизировать'}
+              </button>
+              <button className="dd-action" style={{ flex: 'none', color: 'var(--warn)' }}
+                onClick={() => { saveSync(null); setSync(null); setSyncMsg('Устройство отключено от семьи (данные на месте).'); }}>Отключить</button>
+            </div>
+          </>
+        ) : (
+          <div className="py-3">
+            <div className="text-sm mb-2">Подключить устройство к семейному серверу</div>
+            <input className="dd-input" placeholder="адрес сервера, напр. http://192.168.1.50:8687" value={srvAddr} onChange={e => setSrvAddr(e.target.value)} />
+            <input className="dd-input mt-2" placeholder="твоё имя в семье" value={nick} onChange={e => setNick(e.target.value)} />
+            <input className="dd-input mt-2" placeholder="админ-токен (для второго и далее участников)" value={adminTok} onChange={e => setAdminTok(e.target.value)} />
+            <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>первый подключившийся становится администратором; остальных подключает админ своим токеном</div>
+            <button className="dd-action strong mt-2" disabled={syncBusy || !srvAddr.trim()} onClick={doRegister}>
+              {syncBusy ? 'Подключаю…' : 'Подключить'}
+            </button>
+          </div>
+        )}
+        {syncMsg && <div className="text-[12px] pb-3" style={{ color: 'var(--acc-fg)' }}>{syncMsg}</div>}
       </div>
 
       <div className="dd-field-label">Данные</div>
