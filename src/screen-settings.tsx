@@ -139,6 +139,16 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
             <div className="py-3">
               <div className="text-sm">{syncStatusText()}</div>
               <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>{sync.server}</div>
+              {sync.role === 'admin' && (
+                <button className="dd-link-btn mt-1" style={{ padding: '6px 0', fontSize: 12 }}
+                  title="Нажми, чтобы скопировать"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(sync.token).then(() => setSyncMsg('Админ-токен скопирован — передай его жене для подключения.')).catch(() => setSyncMsg('Админ-токен: ' + sync.token));
+                    track('admin_token_copy');
+                  }}>
+                  🔑 показать/скопировать токен для подключения семьи
+                </button>
+              )}
             </div>
             <div className="flex gap-2 pb-3">
               <button className="dd-action strong flex-1" disabled={syncBusy} onClick={doSync}>
