@@ -6,10 +6,11 @@ LWW по `updatedAt`, tombstone-удаления (очистка старше 90
 
 ## Установка на QNAP (Container Station)
 
-1. Скопируйте папку `backend/` на NAS (например, `/share/ContainerStation/deepdish/`).
-   Папку `data/` разместите на RAID-томе (подстроечите путь в `compose.yaml`, volume `./data:/data`).
-2. Container Station → Создать приложение → загрузите `compose.yaml` из папки
-   (или в SSH: `cd /share/ContainerStation/deepdish && docker compose up -d`).
+1. Скопируйте на NAS в одну папку **три файла** из `backend/`: `server.py`, `requirements.txt`, `compose.yaml`
+   (Dockerfile для запуска не нужен — сборка не используется; сначала проверьте размеры: server.py ~9 КБ,
+   requirements.txt 43 Б, compose.yaml ~1 КБ — пустые файлы из копипасты через буфер не работают).
+2. Container Station → Создать приложение → выберите `compose.yaml` из этой папки
+   (или в SSH: `cd <папка> && docker compose up -d`). Первый старт ~минуту — ставит зависимости.
 3. Сервис поднимется на порту **8687**. Проверка: `http://<IP-NAS>:8687/healthz` → `{"ok": true}`.
 
 ## Подключение семьи

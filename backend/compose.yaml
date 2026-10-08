@@ -1,9 +1,20 @@
+# Без сборки: готовый образ Python, код и зависимости монтируются с папки.
+# Нужны только три файла рядом: server.py, requirements.txt, этот compose.yaml.
 services:
   deepdish-sync:
-    build: .
+    image: python:3.12-slim
     container_name: deepdish-sync
     restart: unless-stopped
+    working_dir: /app
+    command: sh -c "pip install --no-cache-dir -q -r /app/requirements.txt && exec uvicorn server:app --host 0.0.0.0 --port 8687"
     ports:
       - "8687:8687"
     volumes:
-      - ./data:/data  # положите data/ на RAID-том NAS
+      - ./:/app                # server.py и requirements.txt лежат рядом
+      - ./data:/data           # база SQLite (перенесите на RAID-том для бэкапов)
+      - pip-cache:/root/.cache/pip
+    environment:
+      - DD_DB=/data/deepdish.db
+
+volumes:
+  pip-cache:
