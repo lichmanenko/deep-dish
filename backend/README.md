@@ -29,6 +29,23 @@ LWW по `updatedAt`, tombstone-удаления (очистка старше 90
 - Токен юзера = доступ к его дневнику. Админ-токен = право подключать новых участников.
 - На сервере нет ничего идентифицирующего: id, псевдоним, еда, вес (SPEC §2).
 
+
+## Диагностика
+
+**«failed to read dockerfile: open Dockerfile: no such file or directory» / «transferring dockerfile: 2B done»**
+На NAS пустой или отсутствует Dockerfile (при ручном копировании через буфер он создался пустым). Проверка по SSH:
+
+    ls -la /share/ContainerStation/deepdish/   # Dockerfile должен быть ~253 байта
+
+Лечение — скачать файлы из репо целиком, не через буфер:
+
+    cd /share/ContainerStation/deepdish
+    curl -L -o Dockerfile https://github.com/lichmanenko/deep-dish/raw/main/backend/Dockerfile
+    curl -L -o server.py https://github.com/lichmanenko/deep-dish/raw/main/backend/server.py
+    curl -L -o requirements.txt https://github.com/lichmanenko/deep-dish/raw/main/backend/requirements.txt
+
+Затем пересоздать приложение (или ).
+
 ## Разработка
 
 ```bash
