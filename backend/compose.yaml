@@ -1,17 +1,15 @@
-# Deep Dish sync — вариант без сборки и без SSH: полные пути к вашей папке на NAS.
-# Файлы server.py и requirements.txt должны лежать в /share/Container/deepdish/backend
+# Deep Dish sync — HTTPS (TLS) на ваш IP: сертификаты в папке data/ (server.crt, server.key).
+# Файлы рядом: server.py, requirements.txt, data/server.crt, data/server.key
 services:
   deepdish-sync:
     image: python:3.12-slim
     container_name: deepdish-sync
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "pip install --no-cache-dir -q -r /app/requirements.txt && exec uvicorn server:app --host 0.0.0.0 --port 8687"
+    command: sh -c "pip install --no-cache-dir -q -r /app/requirements.txt && exec uvicorn server:app --host 0.0.0.0 --port 8687 --ssl-certfile /data/server.crt --ssl-keyfile /data/server.key"
     ports:
       - "8687:8687"
     volumes:
-      # если при старте ошибка «path not found» — замените здесь
-      # /share/Container/deepdish/backend на /Container/deepdish/backend (оба места)
       - /share/Container/deepdish/backend:/app
       - /share/Container/deepdish/backend/data:/data
       - pip-cache:/root/.cache/pip
