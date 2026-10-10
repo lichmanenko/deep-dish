@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import type { Slot } from './db';
 import { PALETTES, type DeviceSettings, todayISO } from './lib';
-import { loadFlags, saveFlags, detectDangerWindows, type FlagSettings } from './banner';
+import { loadFlags, saveFlags, detectDangerWindows, BASE_FLAG_CATS, type FlagSettings } from './banner';
 import { loadSync, saveSync, registerDevice, runSync, syncStatusText, type SyncSettings } from './sync';
 import { exportJSON, exportCSV, download, wipeAll, track, importJSONText } from './store';
 import { Segmented, Confirm, Modal, Toggle } from './ui';
@@ -13,7 +13,7 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
   settings: DeviceSettings; setSettings: (s: DeviceSettings) => void; onRestartOnboarding: () => void;
 }) {
   const [confirmWipe, setConfirmWipe] = useState(false);
-  // Семья и синк (M2)
+  // Синхронизация (M2)
   const [sync, setSync] = useState<SyncSettings | null>(() => loadSync());
   const [srvAddr, setSrvAddr] = useState('');
   const [nick, setNick] = useState('');
@@ -60,7 +60,9 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
 
   // мотивационные баннеры: тумблеры + красные флаг-категории
   const [flags, setFlags] = useState<FlagSettings>(() => loadFlags());
-  const cats = useLiveQuery(async () => [...new Set((await db.foods.filter(f => !f.deletedAt).toArray()).map(f => f.category))].sort(), [], [] as string[]);
+  const [flagsOpen, setFlagsOpen] = useState(false);
+  const cats = useLiveQuery(async () => [...new Set((await db.foods.filter(f => !f.deletedAt).toArray()).map(f => f.category))].filter(c => c !== 'Импорт MFP').sort(), [], [] as string[]);
+  const FLAG_CATS = [...BASE_FLAG_CATS, ...new Set((cats ?? []).filter(c => !BASE_FLAG_CATS.includes(c)))];
   const [dangerWins] = useState<Array<{ hour: number; count: number }>>([]);
   detectDangerWindows().then(w => { dangerWins.splice(0, dangerWins.length, ...w); });
   const slots = useLiveQuery(async () =>
@@ -68,7 +70,7 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
 
 
   return (
-    <div className="min-h-screen px-4 pt-6 pb-28">
+    <div className="min-h-screen px-4 pt-6 pb-28" style={{ overflowX: 'hidden' }}>
       <h1 className="text-xl font-bold mb-4">Настройки</h1>
 
       <div className="dd-field-label" style={{ marginTop: 0 }}>Цветовая гамма</div>
@@ -93,25 +95,25 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
       <div className="dd-field-label">Мотивация</div>
       <div className="dd-card px-4 py-1">
         <div className="flex justify-between items-center py-3">
-          <div className="text-sm">Баннер «так держать» <span style={{ color: 'var(--mut)' }}>— утром, когда темп не хуже плана</span></div>
-          <Toggle on={flags.praise} onChange={v => { const f = { ...flags, praise: v }; setFlags(f); saveFlags(f); }} />
-        </div>
-        <div className="flex justify-between items-center py-3">
-          <div className="text-sm">Баннер «осторожно» <span style={{ color: 'var(--mut)' }}>— за час до обычного «лишнего»</span></div>
-          <Toggle on={flags.warn} onChange={v => { const f = { ...flags, warn: v }; setFlags(f); saveFlags(f); }} />
+          <div className="text-sm">Баннеры <span style={{ color: 'var(--mut)' }}>— поддержка утром и осторожность перед «слабым» временем</span></div>
+          <Toggle on={flags.praise || flags.warn} onChange={v => { const f = { ...flags, praise: v, warn: v }; setFlags(f); saveFlags(f); }} />
         </div>
         <div className="py-3">
-          <div className="text-sm mb-1.5">Красные флаги <span style={{ color: 'var(--mut)' }}>— категории «угощений» для окна срыва</span></div>
-          <div className="flex flex-wrap gap-1.5">
-            {(cats ?? []).map(c => (
-              <button key={c} className={flags.cats.includes(c) ? 'dd-cat-chip on' : 'dd-cat-chip'}
-                onClick={() => {
-                  const cs = flags.cats.includes(c) ? flags.cats.filter(x => x !== c) : [...flags.cats, c];
-                  const f = { ...flags, cats: cs }; setFlags(f); saveFlags(f);
-                }}>{c}</button>
-            ))}
-          </div>
-          {dangerWins.length > 0 && (
+          <button className="dd-link-btn" style={{ padding: '6px 0' }} onClick={() => setFlagsOpen(!flagsOpen)}>
+            Красные флаги <span style={{ color: 'var(--mut)' }}>{flags.cats.length} категорий</span> {flagsOpen ? '▲' : '▼'}
+          </button>
+          {flagsOpen && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {FLAG_CATS.map(c => (
+                <button key={c} className={flags.cats.includes(c) ? 'dd-cat-chip on' : 'dd-cat-chip'}
+                  onClick={() => {
+                    const cs = flags.cats.includes(c) ? flags.cats.filter(x => x !== c) : [...flags.cats, c];
+                    const f = { ...flags, cats: cs }; setFlags(f); saveFlags(f);
+                  }}>{c}</button>
+              ))}
+            </div>
+          )}
+          {dangerWins.length > 0 && (flags.praise || flags.warn) && (
             <div className="text-[11px] mt-2" style={{ color: 'var(--mut)' }}>
               найденные окна: {dangerWins.map(w => `${w.hour}:00 (${w.count}×)`).join(' · ')}
             </div>
@@ -119,7 +121,7 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
         </div>
       </div>
 
-      <div className="dd-field-label">Времена приёмов пищи (подставляются при вводе)</div>
+      <div className="dd-field-label">Время приёма пищи</div>
       <div className="dd-card px-4 py-1">
         {(slots ?? []).map(s => (
           <div key={s.id} className="flex justify-between items-center py-3">
@@ -132,30 +134,30 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
         ))}
       </div>
 
-      <div className="dd-field-label">Семья и синк</div>
+      <div className="dd-field-label">Синхронизация</div>
       <div className="dd-card px-4 py-1">
         {sync ? (
           <>
             <div className="py-3">
               <div className="text-sm">{syncStatusText()}</div>
-              <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>{sync.server}</div>
+              <div className="text-[11px] mt-1" style={{ color: 'var(--mut)', wordBreak: 'break-all' }}>{sync.server}</div>
               {sync.role === 'admin' && (
                 <button className="dd-link-btn mt-1" style={{ padding: '6px 0', fontSize: 12 }}
                   title="Нажми, чтобы скопировать"
                   onClick={() => {
-                    navigator.clipboard?.writeText(sync.token).then(() => setSyncMsg('Админ-токен скопирован — передай его жене для подключения.')).catch(() => setSyncMsg('Админ-токен: ' + sync.token));
+                    navigator.clipboard?.writeText(sync.token).then(() => setSyncMsg('Токен скопирован — передай его новому пользователю для подключения.')).catch(() => setSyncMsg('Админ-токен: ' + sync.token));
                     track('admin_token_copy');
                   }}>
-                  🔑 показать/скопировать токен для подключения семьи
+                  🔑 скопировать токен для нового пользователя
                 </button>
               )}
             </div>
-            <div className="flex gap-2 pb-3">
-              <button className="dd-action strong flex-1" disabled={syncBusy} onClick={doSync}>
+            <div className="pb-3">
+              <button className="dd-action strong" style={{ width: '100%' }} disabled={syncBusy} onClick={doSync}>
                 {syncBusy ? 'Синхронизирую…' : 'Синхронизировать'}
               </button>
-              <button className="dd-action" style={{ flex: 'none', color: 'var(--warn)' }}
-                onClick={() => { saveSync(null); setSync(null); setSyncMsg('Устройство отключено от семьи (данные на месте).'); }}>Отключить</button>
+              <button className="dd-link-btn" style={{ display: 'block', margin: '0 auto', color: 'var(--warn)', fontSize: 12 }}
+                onClick={() => { saveSync(null); setSync(null); setSyncMsg('Устройство отключено от синхронизации (данные на месте).'); }}>отключить устройство</button>
             </div>
           </>
         ) : (

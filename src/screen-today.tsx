@@ -286,7 +286,7 @@ function SlotLine({ e }: { e: Entry }) {
 
 /** Кольцо с сегментами Б/Ж/У: дуга делится по вкладу групп в съеденный калораж; оттенки одного цвета */
 function MacroRing({ p, f, c, cap, children }: { p: number; f: number; c: number; cap: number; children: React.ReactNode }) {
-  const size = 96, r = 39, sw = 10;
+  const size = 96, r = 43, sw = 10; // r как у Ring — одинаковый визуальный диаметр
   const circ = 2 * Math.PI * r;
   const total = Math.max(1, p + f + c);
   const fill = Math.min(100, cap > 0 ? (p + f + c) / cap * 100 : 0);

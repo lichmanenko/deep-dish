@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
-import { getCatalog, getRecent, lastGrams, toggleStar, saveCustomFood, saveRecipe, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
+import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
 import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode } from './lib';
 import { Sheet, Modal, Confirm, Collapse, cx } from './ui';
 
@@ -44,11 +44,6 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
     () => (searching ? recentItems.filter(i => normE(i.name).includes(ql)).slice(0, 5) : []),
     [searching, recentItems, ql]);
 
-  const starredMatches = useMemo(() => {
-    if (!searching) return [];
-    const rm = new Set(recentMatches.map(i => `${i.kind}:${i.id}`));
-    return starred.filter(i => normE(i.name).includes(ql) && !rm.has(`${i.kind}:${i.id}`));
-  }, [searching, starred, ql, recentMatches]);
   const searchRest = useMemo(() => {
     if (!searching) return [];
     const rm = new Set(recentMatches.map(i => `${i.kind}:${i.id}`));
@@ -80,11 +75,6 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
     return [...own, ...sys];
   }, [catalog]);
 
-  async function quickAdd(item: CatalogItem) {
-    const grams = (await lastGrams(item.kind, item.id)) ?? defaultGramsFor(item);
-    setEditing({ item, presetGrams: grams, presetTime: slot?.defaultTime ?? nowHM() });
-    track('quick_add_tap', { kind: item.kind });
-  }
   function openItem(item: CatalogItem) {
     setEditing({ item, presetGrams: defaultGramsFor(item), presetTime: slot?.defaultTime ?? nowHM() });
   }
@@ -96,7 +86,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
         <div className="flex items-center gap-1 px-4 pt-5">
           <button className="dd-arrow" onClick={onDone} aria-label="Назад">‹</button>
           <div className="flex-1" />
-          <button className="dd-link-btn" onClick={() => setCreatingRecipe(true)}>🍳</button>
+          <button className="dd-link-btn" onClick={() => setCreatingRecipe(true)}>+ рецепт</button>
           <button className="dd-link-btn" onClick={() => setCreatingFood(true)}>＋ продукт</button>
         </div>
         <div className="px-4 pt-1 dd-searchwrap">
@@ -127,12 +117,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <>
             {recentMatches.length > 0 && (
               <Section title="🕘 Из недавних" id="srch-recent" defaultOpen>
-                {recentMatches.map(i => <ItemRow key={`rm-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onQuick={() => quickAdd(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
-              </Section>
-            )}
-            {starredMatches.length > 0 && (
-              <Section title="⭐ Из проверенных" id="srch-starred" defaultOpen>
-                {starredMatches.map(i => <ItemRow key={`ss-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onQuick={() => quickAdd(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
+                {recentMatches.map(i => <ItemRow key={`rm-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
               </Section>
             )}
             <Section title="⌕ Найдено" id="srch-found" defaultOpen>
@@ -141,13 +126,13 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
                   Ничего не нашлось. Создай свой продукт — кнопка「＋ продукт」
                 </p>
               )}
-              {searchRest.map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onQuick={() => quickAdd(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
+              {searchRest.map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
             </Section>
           </>
         ) : (
           <>
             <div className="dd-allhead">Все продукты</div>
-            {allItems.map(i => <ItemRow key={`a-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onQuick={() => quickAdd(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
+            {allItems.map(i => <ItemRow key={`a-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
           </>
         )}
       </div>
@@ -204,8 +189,8 @@ function defaultGramsFor(i: CatalogItem): number {
   return i.kind === 'food' ? (i.food.portionG ?? 100) : 150;
 }
 
-function ItemRow({ item, onOpen, onQuick, onStar, onManage, onWarn }: {
-  item: CatalogItem; onOpen: () => void; onQuick: () => void; onStar: () => void;
+function ItemRow({ item, onOpen, onStar, onManage, onWarn }: {
+  item: CatalogItem; onOpen: () => void; onStar: () => void;
   onManage: (i: CatalogItem) => void; onWarn: (w: string) => void;
 }) {
   const perLabel = item.unit === 'pc' ? 'ккал/порц.' : 'ккал/100 г';
@@ -224,7 +209,6 @@ function ItemRow({ item, onOpen, onQuick, onStar, onManage, onWarn }: {
       </div>
       <div className="kc dd-num">{fmt(item.per100.p)}/{fmt(item.per100.f)}/{fmt(item.per100.c)}</div>
       {mine && <button className="dd-more" title="Изменить или удалить" onClick={e => { e.stopPropagation(); onManage(item); }}>⋯</button>}
-      <button className="plus" onClick={e => { e.stopPropagation(); onQuick(); }}>+</button>
     </div>
   );
 }
@@ -253,7 +237,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
     // порционные: граммы хранятся как шт × 100 — в поле показываем штуки
     setQty(isPc ? String(Math.round((g / 100) * 100) / 100) : String(Math.round(g)));
     setTime(presetTime ?? nowHM());
-    setSlotId(slot?.id ?? 'slot-snack');
+    setSlotId(slot && slot.id !== 'slot-snack' ? slot.id : '');
     setWarn(false);
   }, [open, item, presetGrams, presetTime, slot, isPc]);
 
@@ -261,7 +245,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
   const n = parseFloat(qty.replace(',', '.')) || 0;
   const grams = isPc ? n * 100 : n;
   const k = grams / 100;
-  const cur = slots.find(s => s.id === slotId) ?? slots[0];
+  const cur = slots.find(s => s.id === slotId) ?? slots.find(s => s.id === 'slot-snack') ?? slots[0];
 
   async function doSave(force = false) {
     if (!item || !cur || n <= 0) return;
@@ -290,18 +274,16 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
         </div>
       </div>
 
-      <div className="dd-field-label">Приём пищи</div>
-      <div className="dd-seg">
-        {slots.sort((a, b) => a.sortOrder - b.sortOrder).map(s => (
-          <button key={s.id} className={cx(s.id === slotId && 'on')} onClick={() => setSlotId(s.id)}>{s.emoji} {s.name}</button>
+      <div className="dd-seg mt-3" style={{ display: 'flex' }}>
+        {slots.sort((a, b) => a.sortOrder - b.sortOrder).filter(s => s.id !== 'slot-snack').map(s => (
+          <button key={s.id} style={{ flex: 1 }} className={cx(s.id === slotId && 'on')} onClick={() => setSlotId(s.id)}>{s.emoji} {s.name}</button>
         ))}
       </div>
 
-      <div className="dd-card p-4 mt-4 text-center">
-        <div className="text-2xl font-extrabold dd-num">{fmt(item.per100.kcal * k)}</div>
-        <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>
-          {isPc ? `${qty || 0} × порция · ` : ''}ккал · Б {fmt(item.per100.p * k)} · Ж {fmt(item.per100.f * k)} · У {fmt(item.per100.c * k)}
-        </div>
+      <div className="mt-4 text-center" style={{ fontSize: 18, lineHeight: 1.35 }}>
+        <b className="dd-num">{fmt(item.per100.kcal * k)} ккал</b>
+        <span className="dd-num"> · Б {fmt(item.per100.p * k)} · Ж {fmt(item.per100.f * k)} · У {fmt(item.per100.c * k)}</span>
+        <span style={{ color: 'var(--mut)' }}> на {isPc ? 'порцию' : 'порцию'}</span>
       </div>
 
       {warn && (

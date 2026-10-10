@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getProfile, saveProfile, calcNorma, track, getWeights, weightForecast, ensureDayNorma, type WeightPoint } from './store';
 import type { Profile } from './db';
-import { Segmented, Modal } from './ui';
+import { Segmented, Modal, cx } from './ui';
 import { fmt, todayISO } from './lib';
 import { NumField } from './onboarding';
 
@@ -64,39 +64,45 @@ export function ProfileScreen() {
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Активность</div>
-        {dayNorma?.basis === 'adaptive' ? (
-          <>
-            <div className="dd-seg">
-              <button className="on">⚡ тренд</button>
-            </div>
-            <div className="text-[11px] mt-1.5" style={{ color: 'var(--mut)' }}>
-              расход берётся из твоей истории (что ел + как менялся вес) — ручная активность не нужна
-            </div>
-          </>
-        ) : (
-          <div className="opacity-95">
-            <Segmented value={pr.activity} onChange={v => set({ activity: v })} options={[
-              { value: 'sedentary', label: 'сидячая' }, { value: 'light', label: 'лёгкая' },
-              { value: 'moderate', label: 'средняя' }, { value: 'active', label: 'высокая' }, { value: 'very_active', label: 'очень высокая' },
-            ]} />
+        <div style={dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : undefined}>
+          <Segmented value={pr.activity} onChange={v => set({ activity: v })} options={[
+            { value: 'sedentary', label: 'сидячая' }, { value: 'light', label: 'лёгкая' },
+            { value: 'moderate', label: 'средняя' }, { value: 'active', label: 'высокая' }, { value: 'very_active', label: 'очень высокая' },
+          ]} />
+        </div>
+        {dayNorma?.basis === 'adaptive' && (
+          <div className="text-[11px] mt-1.5" style={{ color: 'var(--acc-fg)' }}>
+            ⚡ тренд — расход берётся из твоей истории (что ел + как менялся вес), ручная активность пока не участвует
           </div>
         )}
       </div>
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Цель</div>
-        <Segmented value={pr.goal} onChange={v => set({ goal: v })} options={[
-          { value: 'none', label: 'без цели' }, { value: 'lose', label: '📉 худеть' },
-          { value: 'maintain', label: '⚖️ держать' }, { value: 'gain', label: '📈 набирать' },
-        ]} />
+        <div className="dd-seg mt-1" style={{ display: 'flex' }}>
+          <button style={{ flex: 1 }} className={cx(pr.goal === 'lose' && 'on')} onClick={() => set({ goal: pr.goal === 'lose' ? 'none' : 'lose' })}>📉 худеть</button>
+          <button style={{ flex: 1 }} className={cx(pr.goal === 'maintain' && 'on')} onClick={() => set({ goal: pr.goal === 'maintain' ? 'none' : 'maintain' })}>⚖️ держать</button>
+          <button style={{ flex: 1 }} className={cx(pr.goal === 'gain' && 'on')} onClick={() => set({ goal: pr.goal === 'gain' ? 'none' : 'gain' })}>📈 набирать</button>
+        </div>
         {pr.goal !== 'none' && (
           <>
-            <div className="dd-field-label">Темп, кг в неделю</div>
-            <Segmented value={String(pr.paceKgPerWeek)} onChange={v => set({ paceKgPerWeek: parseFloat(v) })} options={[
-              { value: '0.25', label: '0,25' }, { value: '0.5', label: '0,5' }, { value: '0.75', label: '0,75' }, { value: '1', label: '1,0' },
-            ]} />
-            <div className="dd-field-label">Целевой вес, кг</div>
-            <NumField label="" value={pr.goalWeightKg} onChange={n => set({ goalWeightKg: n })} />
+            <div className="dd-seg mt-1.5" style={{ display: 'flex' }}>
+              {[0.25, 0.5, 0.75, 1, 1.25].map(v => (
+                <button key={v} style={{ flex: 1 }} className={cx(pr.paceKgPerWeek === v && 'on')}
+                  onClick={() => set({ paceKgPerWeek: v })}>{String(v).replace('.', ',')}</button>
+              ))}
+            </div>
+            <div className="flex items-end gap-3 mt-1.5">
+              <div className="min-w-0" style={{ width: 130 }}>
+                <div className="dd-field-label">Целевой вес, кг</div>
+                <NumField label="" value={pr.goalWeightKg} onChange={n => set({ goalWeightKg: n })} />
+              </div>
+              {forecast && (
+                <div className="flex-1 min-w-0 pb-2 text-[12px]" style={{ color: 'var(--acc-fg)' }}>
+                  При вашем темпе цель будет достигнута {ruDate(forecast.etaDate)}
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -177,7 +183,7 @@ function WeightCard({ weights, forecast }: { weights: WeightPoint[] | undefined;
     <div className="dd-card p-4 mb-4">
       <div className="flex justify-between items-baseline">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Динамика веса</div>
-        <div className="text-[11px] dd-num" style={{ color: delta > 0 ? 'var(--warn)' : 'var(--ok)' }}>
+        <div className="dd-num font-bold" style={{ fontSize: 13, color: delta > 0 ? 'var(--warn)' : 'var(--ok)' }}>
           {delta > 0 ? '+' : ''}{delta} кг за 6 мес
         </div>
       </div>
@@ -190,11 +196,7 @@ function WeightCard({ weights, forecast }: { weights: WeightPoint[] | undefined;
         <span>тренд {forecast ? `−${String(forecast.slopePerWeek).replace('.', ',')} кг/нед` : '—'}</span>
       </div>
       <div className="text-[10px] mt-0.5" style={{ color: 'var(--mut)' }}>пунктир на графике — тренд (усреднённая прямая по взвешиваниям, без скачков воды и соли)</div>
-      {forecast && (
-        <div className="text-[11.5px] mt-1" style={{ color: 'var(--acc-fg)' }}>
-          при таком темпе цель достигается ≈ {ruDate(forecast.etaDate)} (тренд-вес {fmtLocal(forecast.trendKg)} кг)
-        </div>
-      )}
+
     </div>
   );
 }

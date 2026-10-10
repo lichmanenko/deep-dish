@@ -7,6 +7,8 @@ import type { Entry, Food } from './db';
 
 export interface FlagSettings { praise: boolean; warn: boolean; cats: string[] }
 const DEF_FLAGS: FlagSettings = { praise: true, warn: true, cats: ['Сладкое', 'Фастфуд', 'Снеки', 'Алкоголь'] };
+/** базовые флаг-категории: показываются всегда, даже если в каталоге таких нет (алкоголь в каталоге живёт в «Напитках») */
+export const BASE_FLAG_CATS = ['Сладкое', 'Фастфуд', 'Снеки', 'Алкоголь'];
 
 export function loadFlags(): FlagSettings {
   try {

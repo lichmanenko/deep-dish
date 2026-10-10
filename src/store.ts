@@ -85,7 +85,8 @@ export async function getCatalog(query: string): Promise<CatalogItem[]> {
 
 /** Недавние: последние уникальные позиции из дневника (по kind+refId). */
 export async function getRecent(limit = 12): Promise<Array<{ kind: 'food' | 'recipe'; refId: string }>> {
-  const es = await db.entries.orderBy('createdAt').reverse().filter(e => !e.deletedAt).limit(200).toArray();
+  const since = Date.now() - 60 * 86400000; // недавние = за последние 60 дней (В., 09.10)
+  const es = await db.entries.orderBy('createdAt').reverse().filter(e => !e.deletedAt && e.createdAt >= since).limit(400).toArray();
   const seen = new Set<string>(); const out: Array<{ kind: 'food' | 'recipe'; refId: string }> = [];
   for (const e of es) {
     const key = `${e.kind}:${e.refId}`;
@@ -314,16 +315,12 @@ export async function goalProgress(): Promise<GoalProgress | null> {
   const win = weights.filter(w => w.date >= from);
   const tr = weightTrend(win);
   if (!tr) return null;
-  // целевая дата: фиксируем при первом расчёте (дефолт — от темпа профиля)
-  let goalDate = pr.goalDateIso;
-  let dateFixed = true;
-  if (!goalDate) {
-    const pace = pr.paceKgPerWeek || 0.5;
-    const weeks = Math.max(1, Math.round(Math.abs(cur - pr.goalWeightKg) / pace));
-    const d = new Date(); d.setDate(d.getDate() + weeks * 7);
-    goalDate = d.toISOString().slice(0, 10);
-    dateFixed = false; // запись в профиле делает компонент (liveQuery read-only)
-  }
+  // целевая дата — всегда от текущего темпа из профиля (В., 09.10: меняешь темп — меняется дата и прогнозы)
+  const pace = pr.paceKgPerWeek || 0.5;
+  const weeks = Math.max(1, Math.round(Math.abs(cur - pr.goalWeightKg) / pace));
+  const gd = new Date(); gd.setDate(gd.getDate() + weeks * 7);
+  const goalDate = gd.toISOString().slice(0, 10);
+  const dateFixed = true;
   const t0 = new Date(win[0].date).getTime();
   const etaX = (new Date(goalDate + 'T00:00:00').getTime() - t0) / 86400000;
   const forecastKg = tr.slope * etaX + tr.intercept;

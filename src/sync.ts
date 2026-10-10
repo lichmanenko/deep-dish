@@ -116,7 +116,8 @@ export function autoSync() {
   const st = loadSync();
   if (!st || !navigator.onLine) return;
   const now = Date.now();
-  if (now - lastAuto < 5 * 60 * 1000) return;
+  const firstToday = !st.lastOk || new Date(st.lastOk).toDateString() !== new Date().toDateString();
+  if (!firstToday && now - lastAuto < 5 * 60 * 1000) return; // но первый запуск за день — всегда
   lastAuto = now;
   runSync().catch(() => { /* тихо: повторится при следующем триггере */ });
 }
@@ -124,6 +125,8 @@ export function autoSync() {
 export function syncStatusText(): string {
   const st = loadSync();
   if (!st) return 'не настроен';
-  const mins = st.lastOk ? Math.round((Date.now() - st.lastOk) / 60000) : null;
-  return `${st.nickname} (${st.role}) · ${st.lastOk ? (mins !== null && mins < 1 ? 'только что' : `${mins} мин назад`) : 'ещё не синкался'}`;
+  if (!st.lastOk) return `${st.nickname} (${st.role}) · синхронизации ещё не было`;
+  const d = new Date(st.lastOk);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${st.nickname} (${st.role}) · последний синк ${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
