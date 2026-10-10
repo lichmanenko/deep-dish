@@ -6,6 +6,8 @@ import os
 import secrets
 import sqlite3
 import time
+import urllib.parse
+import urllib.request
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -189,6 +191,59 @@ def admin_metrics(days: int = 30, user: sqlite3.Row = Depends(auth)) -> dict[str
             'sessions': {'online': online_t, 'offline': online_f},
             'banners': {'shown': banner_shown, 'dismissed': banner_dismiss},
         }
+
+
+@app.get('/off/search')
+def off_search(q: str, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
+    """Прокси поиска Open Food Facts: браузеру напрямую мешает CORS/нестабильность,
+    сервер ходит свободно. Кэш 10 минут."""
+    import urllib.request
+    q = (q or '').strip()[:60]
+    if len(q) < 3:
+        return {'products': []}
+    cache_key = 'off_' + q.lower()
+    with db() as c:
+        row = c.execute('SELECT body FROM items WHERE kind = ? AND id = ?', ('offcache', cache_key)).fetchone()
+        if row and now_ms() - json.loads(row['body']).get('ts', 0) < 10 * 60 * 1000:
+            return json.loads(row['body'])['payload']
+    url = ('https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + urllib.parse.quote(q)
+           + '&search_simple=1&action=process&json=1&page_size=10'
+           + '&fields=code,product_name,product_name_ru,generic_name,brands,nutriments')
+    req = urllib.request.Request(url, headers={'User-Agent': 'DeepDish-sync/0.4 (family tracker; github.com/lichmanenko)'})
+    try:
+        with urllib.request.urlopen(req, timeout=12) as r:
+            data = json.loads(r.read().decode('utf-8'))
+    except Exception as e:
+        raise HTTPException(502, f'OFF недоступен: {e}')
+    hits = []
+    for pr in (data.get('products') or [])[:10]:
+        n = pr.get('nutriments') or {}
+        kcal = n.get('energy-kcal_100g')
+        if kcal is None and n.get('energy_100g') is not None:
+            try:
+                kcal = round(float(n['energy_100g']) / 4.184)
+            except Exception:
+                kcal = None
+        name = (pr.get('product_name_ru') or pr.get('product_name') or pr.get('generic_name') or '').strip()
+        if not name or not kcal:
+            continue
+        hits.append({
+            'id': str(pr.get('code') or ''),
+            'name': name[:60],
+            'brand': (pr.get('brands') or '').split(',')[0].strip()[:30] or None,
+            'kcal': round(float(kcal)),
+            'p': round(float(n.get('proteins_100g') or 0), 1),
+            'f': round(float(n.get('fat_100g') or 0), 1),
+            'c': round(float(n.get('carbohydrates_100g') or 0), 1),
+        })
+        if len(hits) >= 8:
+            break
+    payload = {'products': hits}
+    with db() as c:
+        c.execute('INSERT INTO items (kind, id, owner, updated, deleted, body) VALUES (?,?,?,?,?,?) ON CONFLICT (kind, id) DO UPDATE SET updated = excluded.updated, body = excluded.body',
+                  ('offcache', cache_key, user['userId'], now_ms(), 0,
+                   json.dumps({'ts': now_ms(), 'payload': payload}, ensure_ascii=False)))
+    return payload
 
 
 @app.post('/sync')

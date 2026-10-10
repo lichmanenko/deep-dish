@@ -2,6 +2,7 @@
 // Онлайн-секция в поиске; сохранение найденного — свой продукт source 'off' (КБЖУ на 100 г).
 import { db, newId, LOCAL_USER, type Food } from './db';
 import { guessCategory } from './lib';
+import { loadSync } from './sync';
 import { track } from './store';
 
 export interface OffHit {
@@ -24,11 +25,29 @@ const num = (n: unknown): number => {
 export async function searchOff(query: string): Promise<OffHit[]> {
   const q = query.trim();
   if (q.length < 3) return [];
+  let hits: OffHit[] = [];
+  // основной путь: через свой сервер синка (надёжно, без CORS; сервер кэширует 10 мин)
+  const st = loadSync();
+  if (st) {
+    try {
+      const res = await fetch(st.server.replace(/\/$/, '') + '/off/search?q=' + encodeURIComponent(q), {
+        headers: { Authorization: 'Bearer ' + st.token }, signal: AbortSignal.timeout(11000),
+      });
+      if (res.ok) hits = (await res.json()).products ?? [];
+    } catch { /* сервер недоступен — попробуем напрямую */ }
+  }
+  if (!hits.length) hits = await searchOffDirect(q);
+  track('off_search', { q: q.slice(0, 20), found: hits.length, via: st && hits.length ? 'server' : 'direct' });
+  return hits;
+}
+
+/** Напрямую в OFF (без сервера или если сервер не ответил) — может падать из-за CORS/сети. */
+async function searchOffDirect(q: string): Promise<OffHit[]> {
   const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + encodeURIComponent(q)
     + '&search_simple=1&action=process&json=1&page_size=10'
     + '&fields=code,product_name,product_name_ru,generic_name,brands,nutriments';
-  const res = await fetch(url, { headers: { 'User-Agent': 'DeepDish/0.4 (family tracker; github.com/lichmanenko)' }, signal: AbortSignal.timeout(9000) });
-  if (!res.ok) throw new Error('OFF ' + res.status);
+  const res = await fetch(url, { signal: AbortSignal.timeout(9000) });
+  if (!res.ok) return [];
   const r = await res.json();
   const hits: OffHit[] = [];
   for (const p of (r.products ?? []) as OffProduct[]) {
@@ -45,7 +64,6 @@ export async function searchOff(query: string): Promise<OffHit[]> {
     });
     if (hits.length >= 8) break;
   }
-  track('off_search', { q: q.slice(0, 20), found: hits.length }); // замер охвата РФ копится в метриках
   return hits;
 }
 
