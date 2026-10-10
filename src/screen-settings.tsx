@@ -6,8 +6,9 @@ import type { Slot } from './db';
 import { PALETTES, type DeviceSettings, todayISO } from './lib';
 import { loadFlags, saveFlags, detectDangerWindows, BASE_FLAG_CATS, type FlagSettings } from './banner';
 import { loadSync, saveSync, registerDevice, runSync, syncStatusText, type SyncSettings } from './sync';
+import { fetchMetrics, type MetricsData } from './metrics';
 import { exportJSON, exportCSV, download, wipeAll, track, importJSONText } from './store';
-import { Segmented, Confirm, Modal, Toggle } from './ui';
+import { Segmented, Confirm, Modal, Toggle, Sheet } from './ui';
 
 export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
   settings: DeviceSettings; setSettings: (s: DeviceSettings) => void; onRestartOnboarding: () => void;
@@ -20,6 +21,14 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
   const [adminTok, setAdminTok] = useState('');
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<MetricsData | null>(null);
+  const [metricsErr, setMetricsErr] = useState<string | null>(null);
+
+  async function doMetrics() {
+    setMetrics(null); setMetricsErr(null);
+    try { setMetrics(await fetchMetrics(30)); track('metrics_open'); }
+    catch (e) { setMetricsErr((e as Error).message); }
+  }
 
   async function doRegister() {
     if (syncBusy) return;
@@ -158,6 +167,10 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
               </button>
               <button className="dd-link-btn" style={{ display: 'block', margin: '0 auto', color: 'var(--warn)', fontSize: 12 }}
                 onClick={() => { saveSync(null); setSync(null); setSyncMsg('Устройство отключено от синхронизации (данные на месте).'); }}>отключить устройство</button>
+              {sync?.role === 'admin' && (
+                <button className="dd-link-btn" style={{ display: 'block', margin: '4px auto 0', fontSize: 12 }}
+                  onClick={doMetrics}>витрина метрик семьи</button>
+              )}
             </div>
           </>
         ) : (
@@ -202,6 +215,45 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
         </div>
       </Modal>
 
+      <Sheet open={!!metrics} onClose={() => setMetrics(null)} title="Витрина метрик" note="Последние 30 дней · только счётчики, без содержимого дневников">
+        {metrics && (
+          <div>
+            {metrics.users.map(u => (
+              <div key={u.nickname} className="py-2" style={{ borderBottom: '1px solid var(--tr)' }}>
+                <div className="text-sm font-semibold">{u.nickname}</div>
+                <div className="text-[12px] mt-0.5" style={{ color: 'var(--mut)' }}>
+                  дней с записями: <b className="dd-num">{u.activeDays}</b> · записей: <b className="dd-num">{u.entries}</b> · открытий: <b className="dd-num">{u.appOpens}</b>
+                </div>
+                <div className="text-[11px] mt-0.5" style={{ color: 'var(--mut)' }}>
+                  функции: {u.topEvents.filter(([k]) => k !== 'app_open').slice(0, 4).map(([k, n]) => `${k} ×${n}`).join(' · ') || '—'}
+                </div>
+              </div>
+            ))}
+            <div className="py-2" style={{ borderBottom: '1px solid var(--tr)' }}>
+              <div className="text-[12px]" style={{ color: 'var(--mut)' }}>
+                сессии: онлайн <b className="dd-num">{metrics.sessions.online}</b> · офлайн <b className="dd-num">{metrics.sessions.offline}</b>
+                {metrics.sessions.online + metrics.sessions.offline > 0 && (
+                  <> (офлайн {Math.round(metrics.sessions.offline / (metrics.sessions.online + metrics.sessions.offline) * 100)}%)</>
+                )}
+              </div>
+              <div className="text-[12px] mt-0.5" style={{ color: 'var(--mut)' }}>
+                баннеры: показов <b className="dd-num">{metrics.banners.shown}</b> · закрытий <b className="dd-num">{metrics.banners.dismissed}</b>
+              </div>
+            </div>
+            <div className="py-2">
+              <div className="text-[11px] mb-1" style={{ color: 'var(--mut)' }}>записи по дням (все вместе)</div>
+              <MetricsSpark data={metrics.perDay.map(d => d.n)} />
+            </div>
+          </div>
+        )}
+      </Sheet>
+      {metricsErr && (
+        <Modal open={!!metricsErr} onClose={() => setMetricsErr(null)}>
+          <p className="dd-modal-text">Витрина не открылась: {metricsErr}</p>
+          <div className="dd-modal-row"><button className="dd-action strong" onClick={() => setMetricsErr(null)}>Понятно</button></div>
+        </Modal>
+      )}
+
       <Confirm open={confirmWipe} text="Точно удалить ВСЁ? Дневник, каталог и профиль исчезнут безвозвратно."
         okLabel="Удалить всё" onCancel={() => setConfirmWipe(false)}
         onOk={async () => { setConfirmWipe(false); await wipeAll(); location.reload(); }} />
@@ -218,5 +270,21 @@ function Row({ label, hint, action }: { label: string; hint?: string; action: Re
       </div>
       {action}
     </div>
+  );
+}
+
+
+function MetricsSpark({ data }: { data: number[] }) {
+  if (data.length < 2) return <div className="text-[11px]" style={{ color: 'var(--mut)' }}>мало данных</div>;
+  const W = 300, H = 56, pad = 4;
+  const max = Math.max(...data, 1);
+  const x = (i: number) => pad + (W - 2 * pad) * (i / (data.length - 1));
+  const y = (v: number) => pad + (H - 2 * pad) * (1 - v / max);
+  const pts = data.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 56 }}>
+      <polyline points={pts} fill="none" stroke="var(--acc)" strokeWidth="1.5" opacity=".85" />
+      <line x1={pad} y1={y(0)} x2={W - pad} y2={y(0)} stroke="var(--tr)" strokeWidth="1" />
+    </svg>
   );
 }

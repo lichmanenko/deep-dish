@@ -126,6 +126,71 @@ def admin_users(user: sqlite3.Row = Depends(auth)) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+@app.get('/admin/metrics')
+def admin_metrics(days: int = 30, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
+    """Агрегаты для витрины метрик (админ; SPEC §8): вовлечённость, регулярность,
+    использование функций, баннеры, офлайн-доля. Только counts — без содержимого дневника."""
+    if user['role'] != 'admin':
+        raise HTTPException(403, 'только администратор')
+    days = max(1, min(days, 90))
+    since = now_ms() - days * 86400000
+    with db() as c:
+        def rows(q: str, args: tuple = ()) -> list[dict]:
+            return [dict(r) for r in c.execute(q, args).fetchall()]
+
+        users = rows('SELECT userId, nickname FROM users')
+        nick = {u['userId']: u['nickname'] for u in users}
+
+        # события по типам и юзерам
+        ev = rows('SELECT userId, name, ts, props FROM events WHERE ts >= ?', (since,))
+        by_user: dict[str, dict[str, int]] = {u['userId']: {} for u in users}
+        online_t = online_f = 0
+        banner_shown = banner_dismiss = 0
+        for e in ev:
+            u = by_user.setdefault(e['userId'], {})
+            u[e['name']] = u.get(e['name'], 0) + 1
+            if e['name'] == 'app_open':
+                p_ = (e['props'] or '{}')
+                if '"online":true' in p_ or '"online": True' in p_:
+                    online_t += 1
+                elif '"online":false' in p_:
+                    online_f += 1
+            if e['name'] == 'banner_shown':
+                banner_shown += 1
+            if e['name'] in ('banner_dismissed', 'banner_x'):
+                banner_dismiss += 1
+
+        # вовлечённость: дни с записями еды (по items entries) за период, по юзерам
+        active_days = rows(
+            "SELECT owner, COUNT(DISTINCT json_extract(body,'$.date')) AS d FROM items "
+            "WHERE kind='entries' AND updated >= ? GROUP BY owner", (since,))
+        entries_cnt = rows(
+            "SELECT owner, COUNT(*) AS n FROM items WHERE kind='entries' AND updated >= ? AND deleted = 0 GROUP BY owner", (since,))
+
+        # записи по дням (для графика, все юзеры вместе)
+        per_day = rows(
+            "SELECT json_extract(body,'$.date') AS day, COUNT(*) AS n FROM items "
+            "WHERE kind='entries' AND updated >= ? AND deleted = 0 GROUP BY day ORDER BY day", (since,))
+
+        out_users = []
+        for u in users:
+            uid = u['userId']
+            out_users.append({
+                'nickname': u['nickname'],
+                'activeDays': next((a['d'] for a in active_days if a['owner'] == uid), 0),
+                'entries': next((e['n'] for e in entries_cnt if e['owner'] == uid), 0),
+                'appOpens': by_user.get(uid, {}).get('app_open', 0),
+                'topEvents': sorted(by_user.get(uid, {}).items(), key=lambda kv: -kv[1])[:6],
+            })
+        return {
+            'days': days,
+            'users': out_users,
+            'perDay': [{'day': r['day'], 'n': r['n']} for r in per_day],
+            'sessions': {'online': online_t, 'offline': online_f},
+            'banners': {'shown': banner_shown, 'dismissed': banner_dismiss},
+        }
+
+
 @app.post('/sync')
 def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
     uid = user['userId']

@@ -7,6 +7,7 @@ import { db, type Slot, type SavedMeal } from './db';
 import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
 import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode } from './lib';
 import { Sheet, Modal, Confirm, Collapse, cx } from './ui';
+import { searchOff, saveOffHit, type OffHit } from './off';
 
 interface AddScreenProps {
   date: string;
@@ -22,6 +23,18 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   const [managing, setManaging] = useState<CatalogItem | null>(null);
   const [explain, setExplain] = useState<string | null>(null);
   const [delMeal, setDelMeal] = useState<SavedMeal | null>(null);
+  // Open Food Facts: онлайн-секция при поиске (интернет), офлайн — не показываем
+  const [offHits, setOffHits] = useState<OffHit[] | null>(null);
+  const [offBusy, setOffBusy] = useState(false);
+  useEffect(() => {
+    const qq = q.trim();
+    if (qq.length < 3 || !navigator.onLine) { setOffHits(null); setOffBusy(false); return; }
+    setOffBusy(true);
+    const t = setTimeout(() => {
+      searchOff(qq).then(h => setOffHits(h)).catch(() => setOffHits(null)).finally(() => setOffBusy(false));
+    }, 700);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const catalog = useLiveQuery(() => getCatalog(q), [q], [] as CatalogItem[]);
   const recentKeys = useLiveQuery(() => getRecent(10), [], [] as Array<{ kind: 'food' | 'recipe'; refId: string }>);
@@ -120,13 +133,28 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
               </Section>
             )}
             <Section title="⌕ Найдено" id="srch-found" defaultOpen>
-              {searchRest.length === 0 && recentMatches.length === 0 && (
+              {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
                 <p className="text-sm mt-4 text-center" style={{ color: 'var(--mut)' }}>
                   Ничего не нашлось. Создай свой продукт — кнопка「＋ продукт」
                 </p>
               )}
               {searchRest.map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
             </Section>
+            {(offBusy || (offHits ?? []).length > 0) && (
+              <Section title="🌐 Открытая база (онлайн)" id="srch-off" defaultOpen>
+                {offBusy && <p className="text-[12px] py-2" style={{ color: 'var(--mut)' }}>Ищу в Open Food Facts…</p>}
+                {(offHits ?? []).map(h => (
+                  <div key={'off-' + h.id + h.name} className="dd-item">
+                    <div className="min-w-0 flex-1">
+                      <div className="nm truncate">{h.name}</div>
+                      <div className="sub">{h.brand ? h.brand + ' · ' : ''}{h.kcal} ккал/100 г · Б {h.p} · Ж {h.f} · У {h.c}</div>
+                    </div>
+                    <button className="dd-link-btn" style={{ color: 'var(--acc-fg)' }}
+                      onClick={() => saveOffHit(h).then(() => { setQ(''); setOffHits(null); })}>＋ в каталог</button>
+                  </div>
+                ))}
+              </Section>
+            )}
           </>
         ) : (
           <>
