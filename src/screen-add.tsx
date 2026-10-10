@@ -31,11 +31,10 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   const searching = q.trim().length > 0;
   const ql = normE(q.trim());
 
-  const { recentItems, starred } = useMemo(() => {
+  const { recentItems } = useMemo(() => {
     const map = new Map((catalog ?? []).map(i => [`${i.kind}:${i.id}`, i]));
     const rec = (recentKeys ?? []).map(k => map.get(`${k.kind}:${k.refId}`)).filter(Boolean) as CatalogItem[];
-    const star = (catalog ?? []).filter(i => i.star);
-    return { recentItems: rec, starred: star };
+      return { recentItems: rec };
   }, [recentKeys, catalog]);
 
   // При поиске: недавние совпадения отдельно, остальная выдача — отдельно.
@@ -121,7 +120,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
               </Section>
             )}
             <Section title="⌕ Найдено" id="srch-found" defaultOpen>
-              {searchRest.length === 0 && recentMatches.length === 0 && starredMatches.length === 0 && (
+              {searchRest.length === 0 && recentMatches.length === 0 && (
                 <p className="text-sm mt-4 text-center" style={{ color: 'var(--mut)' }}>
                   Ничего не нашлось. Создай свой продукт — кнопка「＋ продукт」
                 </p>
