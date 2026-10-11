@@ -1,6 +1,6 @@
 // Слой доступа к данным + расчёты нормы + трекер метрик
 import { bannerAction } from './banner';
-import { db, newId, LOCAL_USER, type Entry, type Food, type Profile, type Recipe, type Slot, type KbjuSnapshot, type DayNorma } from './db';
+import { db, newId, LOCAL_USER, type Entry, type Food, type Profile, type Recipe, type Slot, type KbjuSnapshot, type DayNorma, type SlotMark } from './db';
 import { todayISO, nowHM, kbjuSuspicious, fmt, normE } from './lib';
 
 // ── Метрики ──
@@ -183,6 +183,27 @@ export function calcNorma(pr: Profile): Norma | null {
   };
 }
 
+// ── Пометки «приём не учтён» (день с такой пометкой выпадает из адаптивной нормы) ──
+
+export async function getSlotMarks(): Promise<SlotMark[]> {
+  return db.slotMarks.filter(m => !m.deletedAt && m.userId === LOCAL_USER).toArray();
+}
+
+export async function toggleSlotMark(date: string, slotId: string): Promise<boolean> {
+  const id = `${date}|${slotId}`;
+  const ex = await db.slotMarks.get(id);
+  const now = Date.now();
+  if (ex && !ex.deletedAt) {
+    await db.slotMarks.update(id, { deletedAt: now, updatedAt: now });
+    track('slot_mark_off', {});
+    return false;
+  }
+  if (ex) await db.slotMarks.update(id, { deletedAt: null, updatedAt: now, untracked: true });
+  else await db.slotMarks.add({ id, date, slotId, untracked: true, userId: LOCAL_USER, createdAt: now, updatedAt: now, deletedAt: null });
+  track('slot_mark_on', {});
+  return true;
+}
+
 // ── M1: вес, адаптивная норма по энергобалансу, снапшоты дня ──────────────────
 
 export interface WeightPoint { date: string; kg: number }
@@ -230,7 +251,7 @@ export interface AdaptiveInfo {
 }
 
 /** фактический расход из истории: окна по 28 дней за последние 120, покрытие ≥75% */
-export function adaptiveTdee(weights: WeightPoint[], intake: Map<string, number>, endDate: string): AdaptiveInfo | null {
+export function adaptiveTdee(weights: WeightPoint[], intake: Map<string, number>, endDate: string, untrackedDays?: Set<string>): AdaptiveInfo | null {
   if (weights.length < 2) return null;
   const end = new Date(endDate + 'T00:00:00');
   const windows: AdaptiveInfo[] = [];
@@ -241,7 +262,9 @@ export function adaptiveTdee(weights: WeightPoint[], intake: Map<string, number>
     const from = iso(b), to = iso(e);
     let days = 0, sum = 0;
     for (let d = new Date(b); d <= e; d.setDate(d.getDate() + 1)) {
-      const k = intake.get(iso(d)) ?? 0;
+      const ds = iso(d);
+      if (untrackedDays?.has(ds)) continue; // «не учтён» — частично известный день не годен
+      const k = intake.get(ds) ?? 0;
       if (k > 0) { days++; sum += k; }
     }
     if (days < 21) continue; // неплотное окно пропускаем
@@ -269,7 +292,8 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
   const upTo = weights.length ? weights[weights.length - 1].date : today;
   const from = new Date(new Date(upTo + 'T00:00:00').getTime() - 119 * 86400000).toISOString().slice(0, 10);
   const intake = await getDailyIntake(from, upTo);
-  const ad = adaptiveTdee(weights, intake, upTo);
+  const untrackedDays = new Set((await getSlotMarks()).map(m => m.date));
+  const ad = adaptiveTdee(weights, intake, upTo, untrackedDays);
   let kcal = base.kcal;
   const detail: DayNorma['detail'] = { bmr: base.bmr, tdeeFormula: base.tdee, adj: base.adj };
   if (ad && ad.coverage >= 0.75) {
