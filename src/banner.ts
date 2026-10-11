@@ -2,7 +2,7 @@
 // Состояние и флаги — localStorage (per-device); расчёт — из истории записей.
 import { db } from './db';
 import { todayISO } from './lib';
-import { weightForecast } from './store';
+import { goalProgress } from './store';
 import type { Entry, Food } from './db';
 
 export interface FlagSettings { praise: boolean; warn: boolean; cats: string[] }
@@ -63,13 +63,13 @@ export async function detectDangerWindows(): Promise<Array<{ hour: number; count
 }
 
 const PRAISE_BOLD = [
-  (d: string) => `Так держать! 🔥 Такими темпами цель сама к тебе идёт — уже видно к ${d}.`,
-  (d: string) => `Тренд не врёт: ты быстрее плана 💪 ${d} — и цель твоя.`,
-  (d: string) => `Дисциплина уровня «профи» 🏆 держишь темп, прогноз — ${d}.`,
+  () => 'Так держать! 🔥 План по темпу выполняется — ты в игре.',
+  () => 'Тренд не врёт: ты не медленнее плана 💪 Так и держи.',
+  () => 'Дисциплина уровня «профи» 🏆 темп ровный, план идёт.',
 ];
 const PRAISE_CALM = [
-  (d: string) => `Так держать — план выполняется ✅ прогноз: ${d}.`,
-  (d: string) => `Хороший ровный темп 🙂 если продолжать — цель к ${d}.`,
+  () => 'Так держать — план по темпу выполняется ✅',
+  () => 'Хороший ровный темп 🙂 продолжай в том же ритме.',
 ];
 const WARN_BOLD = [
   (h: number) => `${h}:00 — твоё «слабое» время по статистике. Докажи ей обратное 😎`,
@@ -81,10 +81,6 @@ const WARN_CALM = [
   (h: number) => `Аккуратнее: в это время (${h}:00) чаще всего добавляется лишнее`,
 ];
 
-const ruDate = (iso: string) => {
-  const d = new Date(iso + 'T00:00:00');
-  return `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
 const hashIdx = (s: string, n: number) => {
   let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return Math.abs(h) % n;
@@ -112,15 +108,14 @@ export async function computeBanner(): Promise<BannerInfo | null> {
     }
   }
 
-  // «так держать»: утро, тренд к цели и не медленнее плана
+  // «так держать»: утро, тренд совпадает с целью и не медленнее плана
   if (flags.praise && !st.praiseDone && hh < 12) {
-    const fc = await weightForecast();
-    const pr = await db.profiles.get('local');
-    if (fc && pr?.goal === 'lose' && fc.slopePerWeek >= (pr.paceKgPerWeek || 0.5) - 0.01) {
+    const gp = await goalProgress();
+    if (gp && gp.pct >= 100) {
       const bold = hashIdx(todayISO() + 'p', 5) < 3;
       const arr = bold ? PRAISE_BOLD : PRAISE_CALM;
       st.praiseDone = true; saveBannerState(st);
-      return { kind: 'praise', text: arr[hashIdx(todayISO(), arr.length)](ruDate(fc.etaDate)) };
+      return { kind: 'praise', text: arr[hashIdx(todayISO(), arr.length)]() };
     }
   }
   return null;

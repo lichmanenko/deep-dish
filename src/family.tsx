@@ -1,6 +1,6 @@
 // Вкладка «Семья»: синхронизация (все роли) + витрина метрик и токен (админ).
 // v0.4.1: выделена из Настроек — «всё семейное в одном месте» (В., 11.10).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { loadSync, saveSync, registerDevice, runSync, syncStatusText, type SyncSettings } from './sync';
 import { fetchMetrics, type MetricsData } from './metrics';
 import { track } from './store';
@@ -51,18 +51,18 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
               <button className="dd-action strong" style={{ width: '100%' }} disabled={busy} onClick={doSync}>
                 {busy ? 'Синхронизирую…' : 'Синхронизировать'}
               </button>
-              <button className="dd-link-btn" style={{ display: 'block', margin: '4px auto 0', color: 'var(--warn)', fontSize: 12 }}
-                onClick={() => { saveSync(null); setSync(null); setMsg('Устройство отключено от синхронизации (данные на месте).'); }}>отключить устройство</button>
+              <button className="dd-action" style={{ width: '100%', marginTop: 8, color: 'var(--warn)' }}
+                onClick={() => { saveSync(null); setSync(null); setMsg('Устройство отключено от синхронизации (данные на месте).'); }}>Отключить устройство</button>
+              {isAdmin && (
+                <button className="dd-action" style={{ width: '100%', marginTop: 8 }}
+                  onClick={() => {
+                    navigator.clipboard?.writeText(sync.token)
+                      .then(() => setMsg('Токен скопирован — передай его новому пользователю для подключения.'))
+                      .catch(() => setMsg('Токен: ' + sync.token));
+                    track('admin_token_copy');
+                  }}>Скопировать новый токен</button>
+              )}
             </div>
-            {isAdmin && (
-              <button className="dd-link-btn" style={{ display: 'block', padding: '6px 0', fontSize: 12 }}
-                onClick={() => {
-                  navigator.clipboard?.writeText(sync.token)
-                    .then(() => setMsg('Токен скопирован — передай его новому пользователю для подключения.'))
-                    .catch(() => setMsg('Токен: ' + sync.token));
-                  track('admin_token_copy');
-                }}>🔑 скопировать токен для нового пользователя</button>
-            )}
           </>
         ) : (
           <div className="py-3">
@@ -96,14 +96,8 @@ function MetricsCard() {
     setBusy(false);
   }
 
-  if (!data && !err && !busy) {
-    return (
-      <div className="mt-4">
-        <button className="dd-action" style={{ width: '100%' }} onClick={load}>Открыть витрину метрик</button>
-        <div className="text-[11px] mt-1 text-center" style={{ color: 'var(--mut)' }}>как семья пользуется приложением — только счётчики, без содержимого дневников</div>
-      </div>
-    );
-  }
+  useEffect(() => { load(); }, []); // витрина грузится сразу при входе во вкладку
+  if (!data && !err && !busy) return null;
   if (busy) return <div className="dd-card p-4 mt-4 text-center text-sm" style={{ color: 'var(--mut)' }}>Собираю метрики…</div>;
   if (err) return (
     <div className="dd-card p-4 mt-4 text-center text-sm" style={{ color: 'var(--warn)' }}>
@@ -131,6 +125,7 @@ function MetricsCard() {
           </div>
           <div className="text-[12px] mt-0.5" style={{ color: 'var(--mut)' }}>
             открывал приложение {u.appOpens} раз
+            {u.weightPw != null && ` · вес ${(u.weightPw > 0 ? '+' : '−') + String(Math.abs(u.weightPw)).replace('.', ',')} кг/нед`}
           </div>
         </div>
       ))}

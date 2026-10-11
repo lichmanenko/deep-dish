@@ -146,8 +146,8 @@ export default function App() {
         <nav className={`dd-tabbar${barHidden ? ' hidden' : ''}`}>
           <TabBtn on={screen === 'today'} icon={<Icons.Ring />} label="Сегодня"
             onClick={() => { setTab('today'); setDate(todayISO()); /* повторный тап — к текущей дате */ }} />
-          <TabBtn on={screen === 'family'} icon={<Icons.Family />} label="Семья" onClick={() => setTab('family')} />
           <TabBtn on={screen === 'profile'} icon={<Icons.Person />} label="Профиль" onClick={() => setTab('profile')} />
+          <TabBtn on={screen === 'family'} icon={<Icons.Family />} label="Семья" onClick={() => setTab('family')} />
           <TabBtn on={screen === 'settings'} icon={<Icons.Gear />} label="Настройки" onClick={() => setTab('settings')} />
         </nav>
       )}

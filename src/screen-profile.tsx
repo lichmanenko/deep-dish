@@ -1,8 +1,9 @@
 // Профиль: биометрия (с текущим весом), формула, цель + норма с раскладкой; «Сохранить» активна только при изменениях
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { getProfile, saveProfile, calcNorma, track, getWeights, weightForecast, ensureDayNorma, type WeightPoint } from './store';
+import { getProfile, saveProfile, calcNorma, track, getWeights, ensureDayNorma, type WeightPoint } from './store';
 import type { Profile } from './db';
+import { db } from './db';
 import { Segmented, Modal, cx } from './ui';
 import { fmt, todayISO } from './lib';
 import { NumField } from './onboarding';
@@ -21,11 +22,12 @@ const DEFAULT: Profile = {
 };
 
 export function ProfileScreen() {
+  const fileAvatar = useRef<HTMLInputElement>(null);
   const [pr, setPr] = useState<Profile | null>(null);
   const [baseline, setBaseline] = useState('');
   const [saved, setSaved] = useState(false);
   const weights = useLiveQuery(() => getWeights(), [], [] as WeightPoint[]);
-  const forecast = useLiveQuery(() => weightForecast(), [], null);
+  // v0.5.0: прогноз даты ушёл вместе с целевым весом (цель = темп)
   const [dayNorma, setDayNorma] = useState<import('./db').DayNorma | null>(null);
   const [whyOpen, setWhyOpen] = useState(false);
   useEffect(() => { ensureDayNorma(todayISO()).then(setDayNorma); }, [saved]);
@@ -33,16 +35,8 @@ export function ProfileScreen() {
   useEffect(() => { getProfile().then(p => { setPr(p ?? DEFAULT); setBaseline(JSON.stringify(p ?? DEFAULT)); }); }, []);
   if (!pr) return <div className="min-h-screen" />;
 
-  const norma = calcNorma(pr);
-  // превью до сохранения: норма от черновика, дата — от текущего веса и темпа
-  const previewEta = (() => {
-    if (pr.goal !== 'lose' && pr.goal !== 'gain') return null;
-    const w = pr.weightKg;
-    if (!w || !pr.goalWeightKg) return null;
-    const weeks = Math.max(1, Math.round(Math.abs(w - pr.goalWeightKg) / (pr.paceKgPerWeek || 0.5)));
-    const d = new Date(); d.setDate(d.getDate() + weeks * 7);
-    return d.toISOString().slice(0, 10);
-  })();
+  const norma = calcNorma(pr); // живой расчёт от черновика: норма меняется сразу при правке целей
+  const liveNorma = norma;
   const dirty = JSON.stringify({ ...pr, updatedAt: 0 }) !== JSON.stringify({ ...JSON.parse(baseline || '{}'), updatedAt: 0 });
   const set = (patch: Partial<Profile>) => { setPr({ ...pr, ...patch }); setSaved(false); };
 
@@ -50,12 +44,43 @@ export function ProfileScreen() {
     await saveProfile(pr!);
     setBaseline(JSON.stringify(pr!));
     setSaved(true);
-    track('profile_saved', { goal: pr!.goal, formula: pr!.formula });
+    // v0.5.0: день ещё не закончился — сегодняшний снапшот нормы перезаписываем (прошлые не трогаем)
+    const today = todayISO();
+    await db.dayNormas.delete(today).catch(() => {});
+    ensureDayNorma(today).then(() => setDayNorma(null));
+    track('profile_saved', { goal: pr!.goal });
   }
 
   return (
     <div className="min-h-screen px-4 pt-6 pb-28">
-      <h1 className="text-xl font-bold mb-4">Профиль и норма</h1>
+      <div className="flex items-center gap-3 mb-4">
+        <button className="dd-avatar" aria-label="Сменить фото"
+          onClick={() => fileAvatar.current?.click()}>
+          {pr.avatar
+            ? <img src={pr.avatar} alt="" />
+            : <span className="text-2xl">{(pr.displayName ?? 'Я').slice(0, 1).toUpperCase()}</span>}
+        </button>
+        <div className="flex-1 min-w-0">
+          <input className="dd-input" style={{ fontWeight: 600 }} placeholder="твоё имя"
+            value={pr.displayName ?? ''} onChange={e => set({ displayName: e.target.value })} />
+        </div>
+      </div>
+      <input ref={fileAvatar} type="file" accept="image/*" hidden
+        onChange={e => {
+          const f = e.target.files?.[0]; e.target.value = '';
+          if (!f) return;
+          const img = new Image();
+          img.onload = () => {
+            const c = document.createElement('canvas');
+            c.width = c.height = 128;
+            const ctx = c.getContext('2d')!;
+            const side = Math.min(img.width, img.height);
+            ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 128, 128);
+            set({ avatar: c.toDataURL('image/jpeg', 0.85) });
+            track('avatar_set', {});
+          };
+          img.src = URL.createObjectURL(f);
+        }} />
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Пол</div>
@@ -69,7 +94,7 @@ export function ProfileScreen() {
         <div className="text-[10px] mt-2" style={{ color: 'var(--mut)' }}>текущий вес — точка отсчёта нормы; изменение веса записывается как взвешивание</div>
       </div>
 
-      <WeightCard weights={weights} forecast={forecast} />
+      <WeightCard weights={weights} />
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Активность</div>
@@ -78,12 +103,10 @@ export function ProfileScreen() {
             { value: 'sedentary', label: 'сидячая' }, { value: 'light', label: 'лёгкая' },
             { value: 'moderate', label: 'средняя' }, { value: 'active', label: 'высокая' }, { value: 'very_active', label: 'очень высокая' },
           ]} />
+          {dayNorma?.basis === 'adaptive' && (
+            <button className="dd-seg-btn on" style={{ marginTop: 6, pointerEvents: 'none' }}>⚡ тренд</button>
+          )}
         </div>
-        {dayNorma?.basis === 'adaptive' && (
-          <div className="dd-seg mt-1.5" style={{ pointerEvents: 'none' }}>
-            <button className="on">⚡ тренд</button>
-          </div>
-        )}
         {dayNorma?.basis === 'adaptive' && (
           <div className="text-[11px] mt-1.5" style={{ color: 'var(--mut)' }}>
             расход берётся из твоей истории (что ел + как менялся вес), ручная активность пока не участвует
@@ -99,7 +122,7 @@ export function ProfileScreen() {
           <button style={{ flex: 1 }} className={cx(pr.goal === 'gain' && 'on')} onClick={() => set({ goal: pr.goal === 'gain' ? 'none' : 'gain' })}>набирать</button>
         </div>
         {pr.goal === 'maintain' ? (
-          <div className="text-[12px] mt-2 text-center" style={{ color: 'var(--mut)' }}>норма подбирается так, чтобы вес сохранялся</div>
+          <div className="text-[12px] mt-2 text-center" style={{ color: 'var(--mut)' }}>норма подбирается так, чтобы вес сохранялся: {fmt(liveNorma?.kcal ?? 0)} ккал</div>
         ) : pr.goal !== 'none' && (
           <>
             <div className="dd-field-label">Темп, кг в неделю</div>
@@ -109,16 +132,8 @@ export function ProfileScreen() {
                   onClick={() => set({ paceKgPerWeek: v })}>{String(v).replace('.', ',')}</button>
               ))}
             </div>
-            <div className="flex items-end gap-3 mt-1.5">
-              <div className="min-w-0" style={{ width: 130 }}>
-                <div className="dd-field-label">Целевой вес, кг</div>
-                <NumField label="" value={pr.goalWeightKg} onChange={n => set({ goalWeightKg: n })} />
-              </div>
-              {previewEta && (
-                <div className="flex-1 min-w-0 pb-2 text-center text-[12px]" style={{ color: 'var(--acc-fg)' }}>
-                  при этом темпе — {ruDate(previewEta)}
-                </div>
-              )}
+            <div className="text-[12px] mt-2 text-center" style={{ color: 'var(--acc-fg)' }}>
+              план: −{String(pr.paceKgPerWeek ?? 0.5).replace('.', ',')} кг/нед · норма станет {fmt(liveNorma?.kcal ?? norma?.kcal ?? 0)} ккал
             </div>
           </>
         )}
@@ -144,15 +159,15 @@ export function ProfileScreen() {
 
       {norma ? (
         <div className="dd-card p-5 text-center mb-4">
-          <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--mut)' }}>Дневная норма</div>
+          <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--mut)' }}>Дневная норма{dirty && ' · станет после сохранения'}</div>
           <button onClick={() => setWhyOpen(true)} aria-label="Почему такая норма"
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'block', width: '100%' }}>
             <div className="text-3xl font-extrabold dd-num mt-1" style={{ color: 'var(--acc-fg)' }}>
-              {fmt(dayNorma?.kcal ?? norma.kcal)}
+              {fmt(norma.kcal)}
               {dayNorma?.basis === 'adaptive' && <span className="dd-chip-adaptive" style={{ marginLeft: 8, verticalAlign: 'middle' }}>⚡ тренд</span>}
             </div>
           </button>
-          <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>ккал · Б {fmt(dayNorma?.p ?? norma.p)} г · Ж {fmt(dayNorma?.f ?? norma.f)} г · У {fmt(dayNorma?.c ?? norma.c)} г</div>
+          <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>ккал · Б {fmt(norma.p)} г · Ж {fmt(norma.f)} г · У {fmt(norma.c)} г</div>
           <button onClick={() => setWhyOpen(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
             <div className="text-[10px] mt-2 dd-num" style={{ color: 'var(--mut)' }}>
               {dayNorma?.detail?.tdeeAdaptive
@@ -176,7 +191,7 @@ export function ProfileScreen() {
 
 
 // ── Динамика веса: спарклайн за год + тренд + прогноз цели (M1) ──
-function WeightCard({ weights, forecast }: { weights: WeightPoint[] | undefined; forecast: { slopePerWeek: number; etaDate: string; trendKg: number } | null }) {
+function WeightCard({ weights }: { weights: WeightPoint[] | undefined }) {
   if (!weights || weights.length === 0) return null;
   // окно 365 дней; точки прореживаем до ~120
   const last = weights[weights.length - 1].date;
@@ -210,7 +225,7 @@ function WeightCard({ weights, forecast }: { weights: WeightPoint[] | undefined;
       </svg>
       <div className="flex justify-between text-[10px] dd-num" style={{ color: 'var(--mut)' }}>
         <span>мин {fmtLocal(Math.round(min * 10) / 10)} · медиана {fmtLocal(Math.round(mid * 10) / 10)} · макс {fmtLocal(Math.round(max * 10) / 10)} кг</span>
-        <span>тренд {forecast ? `−${String(forecast.slopePerWeek).replace('.', ',')} кг/нед` : '—'}</span>
+        <span>тренд {trend ? `−${String(Math.abs(Math.round(trend.slope * 700) / 100)).replace('.', ',')} кг/нед` : '—'}</span>
       </div>
       <div className="text-[10px] mt-0.5" style={{ color: 'var(--mut)' }}>пунктир на графике — тренд (усреднённая прямая по взвешиваниям, без скачков воды и соли)</div>
 
@@ -232,8 +247,6 @@ function weightTrendLocal(points: WeightPoint[]): { slope: number; intercept: nu
 }
 
 const fmtLocal = (v: number) => String(v).replace('.', ',');
-const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-function ruDate(iso: string) { const d = new Date(iso + 'T00:00:00'); return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`; }
 
 
 function WhyNorma({ open, onClose, norma, fallback }: {

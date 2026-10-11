@@ -15,7 +15,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Entry, type Slot, type SlotMark } from './db';
 import type { DayNorma } from './db';
-import { getEntries, getProfile, saveProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, getSlotMarks, toggleSlotMark, type GoalProgress } from './store';
+import { getEntries, getProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, getSlotMarks, toggleSlotMark, type GoalProgress } from './store';
 import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt } from './lib';
 import { Ring, Sheet, useSwipe, Slide, Confirm, cx, Modal } from './ui';
 
@@ -42,14 +42,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
   const [confirmDel, setConfirmDel] = useState<Entry | null>(null);
   const [explain, setExplain] = useState<null | { title: string; text: string }>(null);
   const [goalInfo, setGoalInfo] = useState(false);
-  const goal = useLiveQuery(() => goalProgress(), [], null);
-  // фиксация целевой даты — записью нельзя внутри liveQuery, делаем после
-  useEffect(() => {
-    if (goal && !goal.dateFixed) {
-      getProfile().then(pr => { if (pr && !pr.goalDateIso) saveProfile({ ...pr, goalDateIso: goal.goalDate }); });
-    }
-  }, [goal?.dateFixed, goal?.goalDate]);
-
+  const goal = useLiveQuery(() => goalProgress(date), [date], null);
   const totals = useMemo(() => entries.reduce((s, e) => ({
     kcal: s.kcal + e.snapshot.kcal, p: s.p + e.snapshot.p, f: s.f + e.snapshot.f, c: s.c + e.snapshot.c,
   }), { kcal: 0, p: 0, f: 0, c: 0 }), [entries]);
@@ -114,7 +107,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
               </button>
             </div>
             <div className="text-center px-1">
-              <div className="text-xl font-bold dd-num">{fmt(totals.kcal)} ккал</div>
+              <div className="text-xl font-bold dd-num">{fmt(totals.kcal)}</div>
               <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>из {fmt(target)} · {percent}%</div>
               {percent > 100 && <div className="text-xs mt-1" style={{ color: 'var(--warn)' }}>↑ перебор на {fmt(totals.kcal - target)}</div>}
             </div>
@@ -179,14 +172,13 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
       />
 
       <Modal open={goalInfo} onClose={() => setGoalInfo(false)}>
-        <div className="text-[15px] font-bold mb-2">Выполнение цели</div>
+        <div className="text-[15px] font-bold mb-2">Прогресс цели</div>
         {(() => {
-          if (!goal) return <p className="dd-modal-text">Задай цель по весу в профиле — здесь появится прогноз её выполнения.</p>;
+          if (!goal) return <p className="dd-modal-text">Кольцо появляется при цели «худеть» или «набирать». При «держать» оно скрыто.</p>;
           const rows: Array<[string, string]> = [
-            ['Текущий вес', `${String(goal.startKg).replace('.', ',')} кг`],
-            ['Цель', `${String(goal.goalKg).replace('.', ',')} кг к ${ruDate(goal.goalDate)}`],
-            ['Прогноз к этой дате', `${String(goal.forecastKg).replace('.', ',')} кг (по тренду ${goal.slopePerWeek > 0 ? '−' : '+'}${String(Math.abs(goal.slopePerWeek)).replace('.', ',')} кг/нед)`],
-            ['Выполнение', `${goal.pct}% — насколько к целевой дате закроется разрыв между текущим и целевым весом`],
+            ['Плановый темп', `${String(goal.planPw).replace('.', ',')} кг/нед — выбран в профиле`],
+            ['Фактический тренд', `${goal.mode === 'lose' ? (goal.trendPw < 0 ? '−' : '+') : (goal.trendPw >= 0 ? '+' : '−')}${String(Math.abs(goal.trendPw)).replace('.', ',')} кг/нед за 8 недель`],
+            ['Выполнение плана', `${goal.pct}%${goal.pct >= 100 ? ' — план перевыполнен' : goal.pct > 0 ? ' — часть плана' : ' — тренд пока против цели'}`],
           ];
           return (
             <>
@@ -196,10 +188,15 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                   <div className="text-[13px]">{v}</div>
                 </div>
               ))}
+              {goal.tooFast && (
+                <p className="dd-modal-text" style={{ marginTop: 8, color: 'var(--warn)' }}>
+                  Существенно быстрее плана: при похудении это риск потери мышц, при наборе — жира. Подумай о темпе помягче.
+                </p>
+              )}
               <p className="dd-modal-text" style={{ marginTop: 8 }}>
-                Как считаем: тренд — усреднённая прямая по взвешиваниям за 8 недель (не реагирует на воду и соль).
-                Прогнозный вес — продолжение тренда до целевой даты. Выполнение = (текущий − прогноз) / (текущий − цель), но не меньше 0.
-                Цвет кольца: ниже 50% — тревожный, 50–80% — нейтральный, выше 80% — позитивный.
+                Как считаем: тренд — усреднённая прямая по взвешиваниям за 8 недель, замыкается по вчерашнему дню —
+                сегодняшний вес и еда повлияют на кольцо только завтра. Прогресс = тренд / план, без верхней границы.
+                Зафиксирован за этим днём и не пересчитывается задним числом.
               </p>
             </>
           );
@@ -254,11 +251,14 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
       <div className="text-[12.5px] mb-4" style={{ color: 'var(--mut)' }}>
             Сбалансированность: {verdicts.join('; ')}.
       </div>
-      <button className="dd-link-btn" style={{ display: 'block', padding: '6px 0', fontSize: 12, color: marked ? 'var(--warn)' : 'var(--mut)' }}
-        onClick={() => toggleSlotMark(date, slot.id)}>
-        {marked ? '✓ приём не учтён — нажми, чтобы учесть' : 'отметить приём как не учтённый (праздник и т.п.)'}
-      </button>
+      {entries.length === 0 && (
+        <button className="dd-action" style={{ width: '100%', color: marked ? 'var(--mut)' : 'var(--warn)' }}
+          onClick={() => toggleSlotMark(date, slot.id)}>
+          {marked ? 'Снять отметку о пропуске' : 'Пометить как пропущенный'}
+        </button>
+      )}
 
+      {entries.length > 0 && (
       <div className="dd-input-row items-end">
         <div className="flex-1 min-w-0">
           <input className="dd-input" value={name} onChange={e => setName(e.target.value)} placeholder="мой завтрак" />
@@ -268,6 +268,7 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
           {saving ? 'Сохраняю…' : 'Сохранить приём'}
         </button>
       </div>
+      )}
     </Sheet>
   );
 }
@@ -315,28 +316,30 @@ function MacroRing({ p, f, c, cap, children }: { p: number; f: number; c: number
   );
 }
 
-/** Кольцо цели (формула В.): выполнение = прогнозная разница / целевая разница; светофор по гамме */
+/** Кольцо цели (реформа v0.5.0): прогресс = тренд/план без обрезки; ×N для кратных перевыполнений */
 function GoalRing({ goal, onTap }: { goal: GoalProgress; onTap: () => void }) {
-  const R = 39; const size = 96; const sw = 10;
+  const R = 43; const size = 96; const sw = 10;
   const color = goal.pct < 50 ? 'var(--warn)' : goal.pct < 80 ? 'var(--acc)' : 'var(--ok)';
   const circ = 2 * Math.PI * R;
+  const fill = Math.min(100, goal.pct);
+  const label = goal.pct >= 290 ? '×' + Math.floor(goal.pct / 100)
+    : goal.pct >= 190 ? '×2'
+    : goal.pct + '%';
   return (
-    <button onClick={onTap} aria-label="Выполнение цели" className="dd-ring" style={{ width: size, height: size, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+    <button onClick={onTap} aria-label="Прогресс цели" className="dd-ring" style={{ width: size, height: size, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
         <circle cx={size / 2} cy={size / 2} r={R} fill="none" stroke="var(--tr)" strokeWidth={sw} />
-        <circle cx={size / 2} cy={size / 2} r={R} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round"
-          strokeDasharray={`${circ * goal.pct / 100} ${circ}`} />
+        <circle cx={size / 2} cy={size / 2} r={R} fill="none" stroke={color} strokeWidth={sw} strokeLinecap={goal.pct > 100 ? 'butt' : 'round'}
+          strokeDasharray={`${circ * fill / 100} ${circ}`} />
       </svg>
       <div className="dd-ring-val">
-        <div className="text-lg font-extrabold dd-num">{goal.pct}%</div>
-        <div className="text-[10px]" style={{ color: 'var(--mut)' }}>цель</div>
+        <div className="text-lg font-extrabold dd-num">{label}</div>
+        <div className="text-[10px]" style={{ color: 'var(--mut)' }}>план</div>
       </div>
     </button>
   );
 }
 
-const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-function ruDate(iso: string) { const d = new Date(iso + 'T00:00:00'); return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`; }
 
 async function dbSlots(): Promise<Slot[]> {
   const { db } = await import('./db');

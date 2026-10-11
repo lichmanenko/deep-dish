@@ -284,7 +284,18 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
   const pr = await getProfile();
   if (!pr) return null;
   const existing = await db.dayNormas.get(date);
-  if (existing) return existing;
+  if (existing) {
+    // v0.5.0: живой сегодняшний день без прогресса цели — дописываем (прошлые не пересчитываются)
+    if (date === todayISO() && existing.detail.goalPct === undefined) {
+      const gp = await goalProgress(date);
+      if (gp) {
+        const upd = { ...existing, detail: { ...existing.detail, goalPct: gp.pct, trendPw: gp.trendPw, planPw: gp.planPw } };
+        await db.dayNormas.put(upd);
+        return upd;
+      }
+    }
+    return existing;
+  }
   const base = calcNorma(pr);
   if (!base) return null;
   const today = todayISO();
@@ -306,6 +317,8 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
     detail.windowDays = ad.windowDays; detail.coverage = Math.round(ad.coverage * 100);
     detail.intakeAvg = Math.round(ad.intakeAvg); detail.weightDelta = Math.round(ad.weightDelta * 10) / 10;
   }
+  const gp = await goalProgress(date);
+  if (gp) { detail.goalPct = gp.pct; detail.trendPw = gp.trendPw; detail.planPw = gp.planPw; }
   const snap: DayNorma = {
     date, kcal, p: Math.round(kcal * (pr.macroPct?.p ?? 25) / 100 / 4),
     f: Math.round(kcal * (pr.macroPct?.f ?? 30) / 100 / 9), c: Math.round(kcal * (pr.macroPct?.c ?? 45) / 100 / 4),
@@ -316,50 +329,35 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
 }
 
 /**
- * Прогресс к цели (формула В.): целевая разница D0 = текущий − цель;
- * прогнозный вес к целевой дате по тренду → прогнозная разница D1 = текущий − прогноз (min 0);
- * выполнение = D1 / D0. Целевая дата фиксируется в профиле (дефолт — от темпа).
+ * Прогресс цели (реформа В., v0.5.0): цель = ТЕМП, не вес.
+ * Прогресс = текущий тренд (кг/нед, окно 56 дней, замкнуто по вчерашний день) / плановый темп.
+ * Без обрезки (×2 для кратных); тренд против направления цели = 0; «держать»/без цели = null (кольцо скрыто).
+ * Значение фиксируется в dayNorma.detail за день (данные дня влияют только завтра, ретроспектива неизменна).
  */
 export interface GoalProgress {
-  pct: number; startKg: number; goalKg: number; goalDate: string;
-  forecastKg: number; slopePerWeek: number; trendWindowDays: number;
-  /** true — дата уже зафиксирована в профиле; false — компонент должен сохранить дефолт (вне liveQuery) */
-  dateFixed: boolean;
+  mode: 'lose' | 'gain';
+  planPw: number;   // плановый темп, кг/нед (положительное число)
+  trendPw: number;  // фактический тренд со знаком, кг/нед
+  pct: number;      // 0..∞, 100 = план; |тренд|/план при совпадении направления
+  tooFast: boolean; // опережение плана в 1.5+ раза — предупреждение
 }
 
-export async function goalProgress(): Promise<GoalProgress | null> {
+export async function goalProgress(date = todayISO()): Promise<GoalProgress | null> {
   const pr = await getProfile();
-  if (!pr?.goalWeightKg || pr.goal === 'none' || pr.goal === 'maintain') return null;
+  if (!pr || (pr.goal !== 'lose' && pr.goal !== 'gain')) return null;
   const weights = await getWeights();
-  if (weights.length < 2) return null;
-  const cur = weights[weights.length - 1].kg;
-  const last = weights[weights.length - 1].date;
-  const trendDays = 56;
-  const from = new Date(new Date(last + 'T00:00:00').getTime() - (trendDays - 1) * 86400000).toISOString().slice(0, 10);
-  const win = weights.filter(w => w.date >= from);
+  // тренд замыкаем по вчерашнему дню относительно даты снапшота: данные дня влияют только завтра
+  const until = new Date(new Date(date + 'T00:00:00').getTime() - 86400000).toISOString().slice(0, 10);
+  const from = new Date(new Date(until + 'T00:00:00').getTime() - 55 * 86400000).toISOString().slice(0, 10);
+  const win = weights.filter(w => w.date >= from && w.date <= until);
+  if (win.length < 2) return null;
   const tr = weightTrend(win);
   if (!tr) return null;
-  // целевая дата — всегда от текущего темпа из профиля (В., 09.10: меняешь темп — меняется дата и прогнозы)
-  const pace = pr.paceKgPerWeek || 0.5;
-  const weeks = Math.max(1, Math.round(Math.abs(cur - pr.goalWeightKg) / pace));
-  const gd = new Date(); gd.setDate(gd.getDate() + weeks * 7);
-  const goalDate = gd.toISOString().slice(0, 10);
-  const dateFixed = true;
-  const t0 = new Date(win[0].date).getTime();
-  const etaX = (new Date(goalDate + 'T00:00:00').getTime() - t0) / 86400000;
-  const forecastKg = tr.slope * etaX + tr.intercept;
-  const d0 = Math.max(0.001, cur - pr.goalWeightKg);
-  const d1 = Math.max(0, cur - forecastKg);
-  const pct = Math.max(0, Math.min(100, Math.round(d1 / d0 * 100)));
-  return { pct, startKg: cur, goalKg: pr.goalWeightKg, goalDate, dateFixed,
-    forecastKg: Math.round(forecastKg * 10) / 10, slopePerWeek: Math.round(-tr.slope * 700) / 100, trendWindowDays: trendDays };
-}
-
-/** прогноз даты достижения цели по тренду (для профиля) */
-export async function weightForecast(): Promise<{ slopePerWeek: number; etaDate: string; trendKg: number } | null> {
-  const g = await goalProgress();
-  if (!g || g.slopePerWeek <= 0) return null;
-  return { slopePerWeek: g.slopePerWeek, etaDate: g.goalDate, trendKg: g.forecastKg };
+  const plan = Math.abs(pr.paceKgPerWeek || 0.5);
+  const trendPw = Math.round(tr.slope * 700) / 100;
+  const aligned = (pr.goal === 'lose' && trendPw <= 0) || (pr.goal === 'gain' && trendPw >= 0);
+  const pct = aligned ? Math.abs(trendPw) / plan : 0;
+  return { mode: pr.goal, planPw: plan, trendPw, pct: Math.round(pct * 100), tooFast: pct >= 1.5 };
 }
 
 // ── Экспорт ──

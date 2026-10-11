@@ -72,7 +72,9 @@ export interface DayNorma {
   basis: 'formula' | 'adaptive';
   /** компоненты для экрана «почему такая цифра» */
   detail: { bmr?: number; tdeeFormula?: number; tdeeAdaptive?: number; adj?: number; floor?: number;
-    windowDays?: number; coverage?: number; intakeAvg?: number; weightDelta?: number };
+    windowDays?: number; coverage?: number; intakeAvg?: number; weightDelta?: number;
+    /** v0.5.0: прогресс цели-темпа за этот день (тренд/план, %) */
+    goalPct?: number; trendPw?: number; planPw?: number };
   createdAt: number;
 }
 
@@ -90,6 +92,9 @@ export interface Profile {
   macroMode?: 'balanced' | 'mfp' | 'protein' | 'custom';
   /** целевая дата цели (YYYY-MM-DD); фиксируется автоматически от темпа, для кольца выполнения цели */
   goalDateIso?: string;
+  /** v0.5.0: карточка пользователя — имя и аватар (dataURL, 128×128, сжатие на устройстве) */
+  displayName?: string;
+  avatar?: string;
   macroPct?: { p: number; f: number; c: number };
   updatedAt: number;
 }

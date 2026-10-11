@@ -107,8 +107,7 @@ function GoalStep({ onDone, skip }: { onDone: () => void; skip: () => void }) {
           <Segmented value={String(pr.paceKgPerWeek)} onChange={v => set({ paceKgPerWeek: parseFloat(v) })} options={[
             { value: '0.25', label: '0,25 кг/нед' }, { value: '0.5', label: '0,5' }, { value: '1', label: '1,0' },
           ]} />
-          <div className="dd-field-label">Целевой вес, кг</div>
-          <NumField label="" value={pr.goalWeightKg} onChange={n => set({ goalWeightKg: n })} />
+          <div className="text-[11px] mt-2 text-center" style={{ color: 'var(--mut)' }}>цель — темп изменения веса; конкретный вес не фиксируем</div>
         </>}
 
         {norma ? (

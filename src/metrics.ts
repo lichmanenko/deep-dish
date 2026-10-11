@@ -3,7 +3,7 @@ import { loadSync } from './sync';
 
 export interface MetricsData {
   days: number;
-  users: Array<{ nickname: string; activeDays: number; entries: number; appOpens: number; topEvents: Array<[string, number]> }>;
+  users: Array<{ nickname: string; activeDays: number; entries: number; appOpens: number; topEvents: Array<[string, number]>; weightPw?: number | null }>;
   perDay: Array<{ day: string; n: number }>;
   sessions: { online: number; offline: number };
   banners: { shown: number; dismissed: number };
