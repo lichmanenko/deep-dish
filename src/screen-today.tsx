@@ -1,9 +1,21 @@
+function MacroChip({ v, goal, k }: { v: number; goal?: number; k: string }) {
+  const over = goal !== undefined && v > goal;
+  return (
+    <div className="dd-card flex-1 text-center py-2.5">
+      <div className="text-[15px] font-bold dd-num flex items-center justify-center gap-1" style={over ? { color: 'var(--warn)' } : undefined}>
+        {fmt(v)} г{over && <span className="text-[11px]">▲</span>}
+      </div>
+      <div className="text-[11px] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>
+    </div>
+  );
+}
+
 // Экран «Сегодня»: кольцо нормы, чипы БЖУ, слоты с записями, навигация по датам
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type Entry, type Slot } from './db';
+import { db, type Entry, type Slot, type SlotMark } from './db';
 import type { DayNorma } from './db';
-import { getEntries, getProfile, saveProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, type GoalProgress } from './store';
+import { getEntries, getProfile, saveProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, getSlotMarks, toggleSlotMark, type GoalProgress } from './store';
 import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt } from './lib';
 import { Ring, Sheet, useSwipe, Slide, Confirm, cx, Modal } from './ui';
 
@@ -25,6 +37,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
   }
   const [calOpen, setCalOpen] = useState(false);
   const [slotInfo, setSlotInfo] = useState<Slot | null>(null);
+  const marks = useLiveQuery(() => getSlotMarks(), [], [] as SlotMark[]);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [confirmDel, setConfirmDel] = useState<Entry | null>(null);
   const [explain, setExplain] = useState<null | { title: string; text: string }>(null);
@@ -102,7 +115,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
             </div>
             <div className="text-center px-1">
               <div className="text-xl font-bold dd-num">{fmt(totals.kcal)} ккал</div>
-              <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>из {target} · {percent}%</div>
+              <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>из {fmt(target)} · {percent}%</div>
               {percent > 100 && <div className="text-xs mt-1" style={{ color: 'var(--warn)' }}>↑ перебор на {fmt(totals.kcal - target)}</div>}
             </div>
             <div className="flex justify-center">
@@ -112,24 +125,9 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
         </div>
 
         <div className="flex gap-2 mb-4">
-          <MacroChip v={totals.p} goal={norma?.p} k="белки" onClick={() => setExplain({
-            title: 'Белки',
-            text: norma
-              ? `Белков сегодня — ${fmt(totals.p)} г, а цель на день — ${fmt(norma.p)} г. ${totals.p > norma.p ? 'Это немного больше плана: не страшно, просто информация.' : 'Укладываешься в план.'}`
-              : 'Заполни профиль — появятся цели по белкам, жирам и углеводам.',
-          })} />
-          <MacroChip v={totals.f} goal={norma?.f} k="жиры" onClick={() => setExplain({
-            title: 'Жиры',
-            text: norma
-              ? `Жиров сегодня — ${fmt(totals.f)} г, а цель на день — ${fmt(norma.f)} г. ${totals.f > norma.f ? 'Это немного больше плана: не страшно, просто информация.' : 'Укладываешься в план.'}`
-              : 'Заполни профиль — появятся цели по белкам, жирам и углеводам.',
-          })} />
-          <MacroChip v={totals.c} goal={norma?.c} k="углев." onClick={() => setExplain({
-            title: 'Углеводы',
-            text: norma
-              ? `Углеводов сегодня — ${fmt(totals.c)} г, а цель на день — ${fmt(norma.c)} г. ${totals.c > norma.c ? 'Это немного больше плана: не страшно, просто информация.' : 'Укладываешься в план.'}`
-              : 'Заполни профиль — появятся цели по белкам, жирам и углеводам.',
-          })} />
+          <MacroChip v={totals.p} goal={norma?.p} k="белки" />
+          <MacroChip v={totals.f} goal={norma?.f} k="жиры" />
+          <MacroChip v={totals.c} goal={norma?.c} k="углев." />
         </div>
 
         {(slots ?? []).map(slot => {
@@ -145,7 +143,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                 <div className="text-xs dd-num flex items-center" style={{ color: 'var(--mut)' }}>
                   {es.length
                     ? <span className="dd-num font-bold" style={{ fontSize: 13.5, color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
-                    : 'ничего'}
+                    : (marks ?? []).some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : 'ничего'}
                 </div>
               </div>
               {es.map(e => (
@@ -173,6 +171,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
 
       <SlotInfoSheet
         open={!!slotInfo} slot={slotInfo} date={date}
+        marked={!!slotInfo && (marks ?? []).some(m => m.date === date && m.slotId === slotInfo.id)}
         entries={(slotInfo ? entries.filter(e => e.slotId === slotInfo.id) : [])}
         macroPct={profile?.macroPct}
         onClose={() => setSlotInfo(null)}
@@ -221,9 +220,10 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
 }
 
 /** Шит приёма: состав, статистика, сбалансированность, сохранение как приём */
-function SlotInfoSheet({ open, slot, entries, macroPct, onClose, onSave }: {
+function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, onSave }: {
   open: boolean; slot: Slot | null; entries: Entry[]; date: string;
   macroPct?: { p: number; f: number; c: number };
+  marked: boolean;
   onClose: () => void; onSave: (name: string) => Promise<void>;
 }) {
   const [name, setName] = useState('');
@@ -254,6 +254,11 @@ function SlotInfoSheet({ open, slot, entries, macroPct, onClose, onSave }: {
       <div className="text-[12.5px] mb-4" style={{ color: 'var(--mut)' }}>
             Сбалансированность: {verdicts.join('; ')}.
       </div>
+      <button className="dd-link-btn" style={{ display: 'block', padding: '6px 0', fontSize: 12, color: marked ? 'var(--warn)' : 'var(--mut)' }}
+        onClick={() => toggleSlotMark(date, slot.id)}>
+        {marked ? '✓ приём не учтён — нажми, чтобы учесть' : 'отметить приём как не учтённый (праздник и т.п.)'}
+      </button>
+
       <div className="dd-input-row items-end">
         <div className="flex-1 min-w-0">
           <input className="dd-input" value={name} onChange={e => setName(e.target.value)} placeholder="мой завтрак" />
@@ -339,17 +344,6 @@ async function dbSlots(): Promise<Slot[]> {
   return s.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-function MacroChip({ v, goal, k, onClick }: { v: number; goal?: number; k: string; onClick: () => void }) {
-  const over = goal !== undefined && v > goal;
-  return (
-    <div className="dd-card flex-1 text-center py-2.5 cursor-pointer" onClick={onClick}>
-      <div className="text-[15px] font-bold dd-num flex items-center justify-center gap-1" style={over ? { color: 'var(--warn)' } : undefined}>
-        {fmt(v)} г{over && <span className="text-[11px]">▲</span>}
-      </div>
-      <div className="text-[11px]" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>
-    </div>
-  );
-}
 
 
 function EntryLine({ e, slot, showTime, onClick }: { e: Entry; slot: Slot; showTime: 'snacks' | 'all'; onClick: () => void }) {

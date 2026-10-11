@@ -9,15 +9,18 @@ import { TodayScreen } from './screen-today';
 import { AddScreen } from './screen-add';
 import { ProfileScreen } from './screen-profile';
 import { SettingsScreen } from './screen-settings';
+import { FamilyScreen } from './family';
+import { loadSync } from './sync';
 import type { Slot } from './db';
 
-type Tab = 'today' | 'profile' | 'settings';
+type Tab = 'today' | 'family' | 'profile' | 'settings';
 
 export default function App() {
   const [settings, setSettingsState] = useState<DeviceSettings>(() => loadSettings());
   const setSettings = (s: DeviceSettings) => { saveSettings(s); setSettingsState(s); };
 
   const [tab, setTab] = useState<Tab>('today');
+  const [isAdmin] = useState(() => loadSync()?.role === 'admin');
   const [date, setDate] = useState(todayISO());
   const [addOpen, setAddOpen] = useState(false);
   const [addSlot, setAddSlot] = useState<Slot | null>(null);
@@ -82,7 +85,7 @@ export default function App() {
   }, []);
 
   // Кросс-фейд фоновых радиальных пресетов при смене экрана
-  const screen = addOpen ? 'add' : onboarding ? 'onboarding' : tab === 'settings' ? 'settings' : tab === 'profile' ? 'profile' : 'today';
+  const screen = addOpen ? 'add' : onboarding ? 'onboarding' : tab === 'settings' ? 'settings' : tab === 'family' ? 'family' : tab === 'profile' ? 'profile' : 'today';
   const bgA = useRef<HTMLDivElement>(null);
   const bgB = useRef<HTMLDivElement>(null);
   const useA = useRef(true);
@@ -124,6 +127,7 @@ export default function App() {
               onAdd={slot => { setAddSlot(slot); setAddOpen(true); }}
             />
           )}
+          {tab === 'family' && <FamilyScreen isAdmin={isAdmin} />}
           {tab === 'profile' && <ProfileScreen />}
           {banner && !addOpen && (
             <div className={'dd-banner' + (banner.kind === 'warn' ? ' warn' : '')} role="status">
@@ -140,20 +144,52 @@ export default function App() {
       {!addOpen && barHidden && <div className="dd-tabzone" onClick={() => setBarHidden(false)} />}
       {!addOpen && (
         <nav className={`dd-tabbar${barHidden ? ' hidden' : ''}`}>
-          <TabBtn on={tab === 'today'} icon="◍" label="Сегодня"
+          <TabBtn on={screen === 'today'} icon={<Icons.Ring />} label="Сегодня"
             onClick={() => { setTab('today'); setDate(todayISO()); /* повторный тап — к текущей дате */ }} />
-          <TabBtn on={tab === 'profile'} icon="◔" label="Профиль" onClick={() => setTab('profile')} />
-          <TabBtn on={tab === 'settings'} icon="⚙︎" label="Настройки" onClick={() => setTab('settings')} />
+          <TabBtn on={screen === 'family'} icon={<Icons.Family />} label="Семья" onClick={() => setTab('family')} />
+          <TabBtn on={screen === 'profile'} icon={<Icons.Person />} label="Профиль" onClick={() => setTab('profile')} />
+          <TabBtn on={screen === 'settings'} icon={<Icons.Gear />} label="Настройки" onClick={() => setTab('settings')} />
         </nav>
       )}
     </>
   );
 }
 
-function TabBtn({ on, icon, label, onClick }: { on: boolean; icon: string; label: string; onClick: () => void }) {
+function TabBtn({ on, icon, label, onClick }: { on: boolean; icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
     <button className={`dd-tab${on ? ' on' : ''}`} onClick={onClick}>
       <span className="ti">{icon}</span>{label}
     </button>
   );
 }
+
+
+// ── Монохромные SVG-иконки вкладок (единый стиль: линия, currentColor) ──
+const Icons = {
+  Ring: () => (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="8.5" opacity=".25" />
+      <path d="M12 3.5 A8.5 8.5 0 0 1 20.5 12" />
+    </svg>
+  ),
+  Family: () => (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8.5" cy="7.5" r="3" />
+      <path d="M3 20c.5-3.5 2.5-5.5 5.5-5.5s5 2 5.5 5.5" />
+      <circle cx="17" cy="9" r="2.3" opacity=".55" />
+      <path d="M15.5 14.6c2.8.2 4.6 1.9 5 4.9" opacity=".55" />
+    </svg>
+  ),
+  Person: () => (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="8" r="3.6" />
+      <path d="M5 20c.8-3.8 3.4-5.8 7-5.8s6.2 2 7 5.8" />
+    </svg>
+  ),
+  Gear: () => (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2.8v2.4M12 18.8v2.4M4.3 6.5l1.9 1.4M17.8 16.1l1.9 1.4M2.8 12h2.4M18.8 12h2.4M4.3 17.5l1.9-1.4M17.8 7.9l1.9-1.4" />
+    </svg>
+  ),
+};

@@ -164,7 +164,7 @@ input[type=time].dd-input { padding: 0 8px; }
   flex: 1; text-align: center; padding: 9px 4px; border-radius: 18px; font-size: 11px;
   color: var(--mut); background: transparent; border: none; font-weight: 600; cursor: pointer; font-family: inherit;
 }
-.dd-tab .ti { font-size: 30px; display: block; margin-bottom: 2px; opacity: .92; line-height: 1; }
+.dd-tab .ti { font-size: 30px; display: flex; justify-content: center; margin-bottom: 2px; opacity: .92; line-height: 1; }
 .dd-tab.on { background: var(--glass); color: var(--acc-fg); }
 
 /* ── Онбординг: экран без прокрутки, закреплённые шапка/подвал ── */
@@ -231,9 +231,15 @@ input[type=time].dd-input { padding: 0 8px; }
 .dd-banner-x { background: none; border: none; color: var(--mut); font-size: 13px; padding: 6px; cursor: pointer; flex: none; }
 @keyframes dd-banner-in { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
 .dd-slot-link { background: none; border: none; padding: 0; cursor: pointer; color: var(--tx); display: inline-flex; align-items: baseline; }
-.dd-slot-link > span:last-child { border-bottom: 1.5px solid var(--tr); padding-bottom: 1px; border-radius: 1px; }
+.dd-slot-link > span:last-child { }
 .dd-chip-adaptive { font-size: 10px; font-weight: 700; color: var(--acc-fg); background: var(--tr); border-radius: 8px; padding: 2px 7px; }
 .dd-searchwrap { position: relative; }
+.dd-searchdot {
+  position: absolute; right: 30px; top: 50%; transform: translateY(-50%);
+  width: 7px; height: 7px; border-radius: 50%; background: var(--acc);
+  animation: dd-dot 1s ease-in-out infinite;
+}
+@keyframes dd-dot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 .dd-searchclear {
   position: absolute; right: 26px; top: 50%; transform: translateY(-50%);
   width: 30px; height: 30px; border-radius: 10px; border: none; background: none;

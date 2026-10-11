@@ -215,6 +215,18 @@ def off_search(q: str, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
             data = json.loads(r.read().decode('utf-8'))
     except Exception as e:
         raise HTTPException(502, f'OFF недоступен: {e}')
+    # сербско-югославский шум: кириллический запрос -> только русская кириллица
+    # (без ђ ћ џ љ њ ј - сербских букв; русские ъ ы ё наоборот исключают сербский)
+    SRB = set('ђћџљњј')
+    cyr_query = any('а' <= ch.lower() <= 'я' or ch.lower() in 'ё' for ch in q)
+
+    def ru_ok(name: str) -> bool:
+        if not cyr_query:
+            return True
+        if any(ch in SRB for ch in name.lower()):
+            return False
+        return any('а' <= ch.lower() <= 'я' or ch.lower() == 'ё' for ch in name)
+
     hits = []
     for pr in (data.get('products') or [])[:10]:
         n = pr.get('nutriments') or {}
@@ -225,7 +237,7 @@ def off_search(q: str, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
             except Exception:
                 kcal = None
         name = (pr.get('product_name_ru') or pr.get('product_name') or pr.get('generic_name') or '').strip()
-        if not name or not kcal:
+        if not name or not kcal or not ru_ok(name):
             continue
         hits.append({
             'id': str(pr.get('code') or ''),

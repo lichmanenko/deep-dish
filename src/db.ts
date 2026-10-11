@@ -57,6 +57,14 @@ export interface WeightLog {
   createdAt: number; updatedAt: number; deletedAt: number | null;
 }
 
+/** Пометка «приём не учтён» (праздник и т.п.): день с помеченным приёмом
+ * выбраковывается из расчёта адаптивной нормы (частично известный день не годится). */
+export interface SlotMark {
+  id: string; // date + '|' + slotId
+  date: string; slotId: string; untracked: boolean;
+  userId: string; createdAt: number; updatedAt: number; deletedAt: number | null;
+}
+
 /** Снапшот дневной нормы: фиксируется за днём, прошлое не пересчитывается (решение В.). */
 export interface DayNorma {
   date: string; // YYYY-MM-DD, первичный ключ
@@ -116,6 +124,7 @@ class DeepDishDb extends Dexie {
   recipes!: EntityTable<Recipe, 'id'>;
   savedMeals!: EntityTable<SavedMeal, 'id'>;
   dayNormas!: EntityTable<DayNorma, 'date'>;
+  slotMarks!: EntityTable<SlotMark, 'id'>;
   slots!: EntityTable<Slot, 'id'>;
   entries!: EntityTable<Entry, 'id'>;
   weightLogs!: EntityTable<WeightLog, 'id'>;
@@ -176,6 +185,19 @@ class DeepDishDb extends Dexie {
       profiles: 'userId',
       events: 'id, ts, name',
       dayNormas: 'date',
+    });
+    // v5 — пометки «приём не учтён» (выбраковка дней из адаптивной нормы)
+    this.version(5).stores({
+      foods: 'id, name, category, barcode, ownerId, source, deletedAt, star',
+      recipes: 'id, name, ownerId, deletedAt, star',
+      savedMeals: 'id, name, ownerId, deletedAt',
+      slots: 'id, ownerId, sortOrder, deletedAt',
+      entries: 'id, userId, date, slotId, refId, createdAt, deletedAt, [userId+date]',
+      weightLogs: 'id, userId, date, deletedAt, [userId+date]',
+      profiles: 'userId',
+      events: 'id, ts, name',
+      dayNormas: 'date',
+      slotMarks: 'id, date',
     });
   }
 }

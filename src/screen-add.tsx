@@ -107,6 +107,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
             value={q} onChange={e => setQ(e.target.value)} style={q ? { paddingRight: 44 } : undefined}
           />
           {q && <button className="dd-searchclear" aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
+          {offBusy && <span className="dd-searchdot" aria-hidden="true" />}
         </div>
       </div>
 
@@ -140,21 +141,20 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
               )}
               {searchRest.map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
             </Section>
-            {(offBusy || (offHits ?? []).length > 0) && (
-              <Section title="🌐 Открытая база (онлайн)" id="srch-off" defaultOpen>
-                {offBusy && <p className="text-[12px] py-2" style={{ color: 'var(--mut)' }}>Ищу в Open Food Facts…</p>}
-                {(offHits ?? []).map(h => (
-                  <div key={'off-' + h.id + h.name} className="dd-item">
-                    <div className="min-w-0 flex-1">
-                      <div className="nm truncate">{h.name}</div>
-                      <div className="sub">{h.brand ? h.brand + ' · ' : ''}{h.kcal} ккал/100 г · Б {h.p} · Ж {h.f} · У {h.c}</div>
-                    </div>
-                    <button className="dd-link-btn" style={{ color: 'var(--acc-fg)' }}
-                      onClick={() => saveOffHit(h).then(() => { setQ(''); setOffHits(null); })}>＋ в каталог</button>
-                  </div>
-                ))}
-              </Section>
-            )}
+            {(offHits ?? []).map(h => (
+              <div key={'off-' + h.id + h.name} className="dd-item" role="button"
+                onClick={async () => {
+                  const id = await saveOffHit(h);
+                  setOffHits(null);
+                  const saved = (catalog ?? []).find(i => i.id === id);
+                  if (saved) setEditing({ item: saved, presetGrams: undefined, presetTime: slot?.defaultTime ?? nowHM() });
+                }}>
+                <div className="min-w-0 flex-1">
+                  <div className="nm truncate">{h.name}</div>
+                  <div className="sub">{h.brand ? h.brand + ' · ' : ''}{h.kcal} ккал/100 г · Б {h.p} · Ж {h.f} · У {h.c}</div>
+                </div>
+              </div>
+            ))}
           </>
         ) : (
           <>

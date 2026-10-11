@@ -34,6 +34,15 @@ export function ProfileScreen() {
   if (!pr) return <div className="min-h-screen" />;
 
   const norma = calcNorma(pr);
+  // превью до сохранения: норма от черновика, дата — от текущего веса и темпа
+  const previewEta = (() => {
+    if (pr.goal !== 'lose' && pr.goal !== 'gain') return null;
+    const w = pr.weightKg;
+    if (!w || !pr.goalWeightKg) return null;
+    const weeks = Math.max(1, Math.round(Math.abs(w - pr.goalWeightKg) / (pr.paceKgPerWeek || 0.5)));
+    const d = new Date(); d.setDate(d.getDate() + weeks * 7);
+    return d.toISOString().slice(0, 10);
+  })();
   const dirty = JSON.stringify({ ...pr, updatedAt: 0 }) !== JSON.stringify({ ...JSON.parse(baseline || '{}'), updatedAt: 0 });
   const set = (patch: Partial<Profile>) => { setPr({ ...pr, ...patch }); setSaved(false); };
 
@@ -71,8 +80,13 @@ export function ProfileScreen() {
           ]} />
         </div>
         {dayNorma?.basis === 'adaptive' && (
-          <div className="text-[11px] mt-1.5" style={{ color: 'var(--acc-fg)' }}>
-            ⚡ тренд — расход берётся из твоей истории (что ел + как менялся вес), ручная активность пока не участвует
+          <div className="dd-seg mt-1.5" style={{ pointerEvents: 'none' }}>
+            <button className="on">⚡ тренд</button>
+          </div>
+        )}
+        {dayNorma?.basis === 'adaptive' && (
+          <div className="text-[11px] mt-1.5" style={{ color: 'var(--mut)' }}>
+            расход берётся из твоей истории (что ел + как менялся вес), ручная активность пока не участвует
           </div>
         )}
       </div>
@@ -80,13 +94,16 @@ export function ProfileScreen() {
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Цель</div>
         <div className="dd-seg mt-1" style={{ display: 'flex' }}>
-          <button style={{ flex: 1 }} className={cx(pr.goal === 'lose' && 'on')} onClick={() => set({ goal: pr.goal === 'lose' ? 'none' : 'lose' })}>📉 худеть</button>
-          <button style={{ flex: 1 }} className={cx(pr.goal === 'maintain' && 'on')} onClick={() => set({ goal: pr.goal === 'maintain' ? 'none' : 'maintain' })}>⚖️ держать</button>
-          <button style={{ flex: 1 }} className={cx(pr.goal === 'gain' && 'on')} onClick={() => set({ goal: pr.goal === 'gain' ? 'none' : 'gain' })}>📈 набирать</button>
+          <button style={{ flex: 1 }} className={cx(pr.goal === 'lose' && 'on')} onClick={() => set({ goal: pr.goal === 'lose' ? 'none' : 'lose' })}>худеть</button>
+          <button style={{ flex: 1 }} className={cx(pr.goal === 'maintain' && 'on')} onClick={() => set({ goal: pr.goal === 'maintain' ? 'none' : 'maintain' })}>держать</button>
+          <button style={{ flex: 1 }} className={cx(pr.goal === 'gain' && 'on')} onClick={() => set({ goal: pr.goal === 'gain' ? 'none' : 'gain' })}>набирать</button>
         </div>
-        {pr.goal !== 'none' && (
+        {pr.goal === 'maintain' ? (
+          <div className="text-[12px] mt-2 text-center" style={{ color: 'var(--mut)' }}>норма подбирается так, чтобы вес сохранялся</div>
+        ) : pr.goal !== 'none' && (
           <>
-            <div className="dd-seg mt-1.5" style={{ display: 'flex' }}>
+            <div className="dd-field-label">Темп, кг в неделю</div>
+            <div className="dd-seg" style={{ display: 'flex' }}>
               {[0.25, 0.5, 0.75, 1, 1.25].map(v => (
                 <button key={v} style={{ flex: 1 }} className={cx(pr.paceKgPerWeek === v && 'on')}
                   onClick={() => set({ paceKgPerWeek: v })}>{String(v).replace('.', ',')}</button>
@@ -97,9 +114,9 @@ export function ProfileScreen() {
                 <div className="dd-field-label">Целевой вес, кг</div>
                 <NumField label="" value={pr.goalWeightKg} onChange={n => set({ goalWeightKg: n })} />
               </div>
-              {forecast && (
-                <div className="flex-1 min-w-0 pb-2 text-[12px]" style={{ color: 'var(--acc-fg)' }}>
-                  При вашем темпе цель будет достигнута {ruDate(forecast.etaDate)}
+              {previewEta && (
+                <div className="flex-1 min-w-0 pb-2 text-center text-[12px]" style={{ color: 'var(--acc-fg)' }}>
+                  при этом темпе — {ruDate(previewEta)}
                 </div>
               )}
             </div>
