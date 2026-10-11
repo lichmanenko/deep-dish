@@ -174,6 +174,26 @@ def admin_metrics(days: int = 30, user: sqlite3.Row = Depends(auth)) -> dict[str
             "SELECT json_extract(body,'$.date') AS day, COUNT(*) AS n FROM items "
             "WHERE kind='entries' AND updated >= ? AND deleted = 0 GROUP BY day ORDER BY day", (since,))
 
+        # тренд веса каждого юзера за 60 дней (для витрины: «−0,4 кг/нед»)
+        weight_trend = {}
+        for r in c.execute(
+                "SELECT owner, json_extract(body,'$.date') AS day, json_extract(body,'$.weightKg') AS kg FROM items "
+                "WHERE kind='weightLogs' AND deleted = 0 AND updated >= ? ORDER BY day", (now_ms() - 60 * 86400000,)):
+            weight_trend.setdefault(r['owner'], []).append((r['day'], r['kg']))
+        def slope_pw(points):
+            if len(points) < 2:
+                return None
+            import datetime
+            t0 = datetime.date.fromisoformat(points[0][0]).toordinal()
+            xs = [datetime.date.fromisoformat(d).toordinal() - t0 for d, _ in points]
+            ys = [kg for _, kg in points]
+            n = len(xs); mx = sum(xs) / n; my = sum(ys) / n
+            num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+            den = sum((x - mx) ** 2 for x in xs)
+            if den == 0:
+                return None
+            return round((num / den) * 7, 2)  # кг/нед
+
         out_users = []
         for u in users:
             uid = u['userId']
@@ -183,6 +203,7 @@ def admin_metrics(days: int = 30, user: sqlite3.Row = Depends(auth)) -> dict[str
                 'entries': next((e['n'] for e in entries_cnt if e['owner'] == uid), 0),
                 'appOpens': by_user.get(uid, {}).get('app_open', 0),
                 'topEvents': sorted(by_user.get(uid, {}).items(), key=lambda kv: -kv[1])[:6],
+                'weightPw': slope_pw(weight_trend.get(uid, [])),
             })
         return {
             'days': days,
@@ -215,17 +236,19 @@ def off_search(q: str, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
             data = json.loads(r.read().decode('utf-8'))
     except Exception as e:
         raise HTTPException(502, f'OFF недоступен: {e}')
-    # сербско-югославский шум: кириллический запрос -> только русская кириллица
-    # (без ђ ћ џ љ њ ј - сербских букв; русские ъ ы ё наоборот исключают сербский)
+    # не-русский шум: кириллический запрос -> только русская кириллица
+    # (выбраковываем сербские ђ ћ џ љ њ ј и украинские ї є ґ; приоритет — товары с EAN 460-469 = Россия)
     SRB = set('ђћџљњј')
+    UKR = set('їєґ')
     cyr_query = any('а' <= ch.lower() <= 'я' or ch.lower() in 'ё' for ch in q)
 
     def ru_ok(name: str) -> bool:
         if not cyr_query:
             return True
-        if any(ch in SRB for ch in name.lower()):
+        nl = name.lower()
+        if any(ch in SRB or ch in UKR for ch in nl):
             return False
-        return any('а' <= ch.lower() <= 'я' or ch.lower() == 'ё' for ch in name)
+        return any('а' <= ch <= 'я' or ch == 'ё' for ch in nl)
 
     hits = []
     for pr in (data.get('products') or [])[:10]:
@@ -250,6 +273,10 @@ def off_search(q: str, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
         })
         if len(hits) >= 8:
             break
+    if cyr_query and hits:
+        ru_ean = [h for h in hits if h['id'].startswith('46')]
+        if ru_ean:
+            hits = ru_ean  # российская выдача; если пусто — оставляем кириллическую как есть
     payload = {'products': hits}
     with db() as c:
         c.execute('INSERT INTO items (kind, id, owner, updated, deleted, body) VALUES (?,?,?,?,?,?) ON CONFLICT (kind, id) DO UPDATE SET updated = excluded.updated, body = excluded.body',
