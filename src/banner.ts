@@ -46,7 +46,8 @@ async function flagEntries(cats: string[]): Promise<Array<{ date: string; hour: 
   const out: Array<{ date: string; hour: number }> = [];
   for (const e of es) {
     const f = foods.get(e.refId);
-    if (!f || !cats.includes(f.category)) continue;
+    // А1(ревью): MFP-эру не берём — скрытые продукты и timeApprox (фиктивное время слота)
+    if (!f || f.hidden || e.timeApprox || !cats.includes(f.category)) continue;
     const h = parseInt(e.timeEaten.slice(0, 2), 10);
     if (Number.isFinite(h)) out.push({ date: e.date, hour: h });
   }
@@ -116,6 +117,32 @@ export async function computeBanner(): Promise<BannerInfo | null> {
       const arr = bold ? PRAISE_BOLD : PRAISE_CALM;
       st.praiseDone = true; saveBannerState(st);
       return { kind: 'praise', text: arr[hashIdx(todayISO(), arr.length)]() };
+    }
+  }
+  // А3(ревью): «держать» — похвала за стабильность (тренд в пределах ±0,1 кг/нед, данные есть)
+  if (flags.praise && !st.praiseDone && hh < 12) {
+    const pr = await db.profiles.get('local');
+    if (pr?.goal === 'maintain') {
+      const weights = (await db.weightLogs.filter(w => !w.deletedAt).toArray())
+        .map(w => ({ date: w.date, kg: w.weightKg })).sort((a, b) => a.date < b.date ? -1 : 1);
+      const from = new Date(Date.now() - 55 * 86400000);
+      const p2 = (n: number) => String(n).padStart(2, '0');
+      const fromIso = `${from.getFullYear()}-${p2(from.getMonth() + 1)}-${p2(from.getDate())}`;
+      const win = weights.filter(w => w.date >= fromIso);
+      if (win.length >= 4) {
+        const t0 = new Date(win[0].date + 'T00:00:00').getTime();
+        const xs = win.map(w => (new Date(w.date + 'T00:00:00').getTime() - t0) / 86400000);
+        const ys = win.map(w => w.kg);
+        const n = xs.length, mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+        let num = 0, den = 0;
+        for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
+        const pw = den ? Math.abs(num / den) * 7 : 99;
+        if (pw <= 0.1) {
+          const arr = hashIdx(todayISO() + 'p', 5) < 3 ? PRAISE_BOLD : PRAISE_CALM;
+          st.praiseDone = true; saveBannerState(st);
+          return { kind: 'praise', text: arr[hashIdx(todayISO(), arr.length)]() };
+        }
+      }
     }
   }
   return null;

@@ -106,7 +106,10 @@ export async function runSync(): Promise<SyncResult> {
   }
 
   const nowLocal = Date.now();
-  saveSync({ ...st, since: r.serverTime, lastPush: Math.max(st.lastPush, nowLocal - 1), lastOk: nowLocal });
+  // Д2+Д5(ревью): since — последняя отданная запись (хвост за лимитом доедет следующим обменом);
+  // lastPush — по серверным часам (принятые записи не уедут эхом даже при расхождении локальных часов)
+  const since = (typeof r.maxUpdated === 'number' && r.changes?.length) ? r.maxUpdated : r.serverTime;
+  saveSync({ ...st, since, lastPush: Math.max(st.lastPush, r.serverTime), lastOk: nowLocal });
   return { ok: true, pushed: r.applied ?? changes.length, pulled };
 }
 

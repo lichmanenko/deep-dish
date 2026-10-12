@@ -162,23 +162,34 @@ def admin_metrics(days: int = 30, user: sqlite3.Row = Depends(auth)) -> dict[str
             if e['name'] in ('banner_dismissed', 'banner_x'):
                 banner_dismiss += 1
 
-        # вовлечённость: дни с записями еды (по items entries) за период, по юзерам
+        # вовлечённость: дни с записями еды (по датам записей), по юзерам; + прошлое окно для сравнения
+        from datetime import date as _d2, timedelta as _td2
+        since_day2 = (_d2.today() - _td2(days=days)).isoformat()
+        prev_day2 = (_d2.today() - _td2(days=2 * days)).isoformat()
         active_days = rows(
             "SELECT owner, COUNT(DISTINCT json_extract(body,'$.date')) AS d FROM items "
-            "WHERE kind='entries' AND updated >= ? GROUP BY owner", (since,))
+            "WHERE kind='entries' AND deleted = 0 AND json_extract(body,'$.date') >= ? GROUP BY owner", (since_day2,))
+        prev_days = rows(
+            "SELECT owner, COUNT(DISTINCT json_extract(body,'$.date')) AS d FROM items "
+            "WHERE kind='entries' AND deleted = 0 AND json_extract(body,'$.date') >= ? AND json_extract(body,'$.date') < ? GROUP BY owner",
+            (prev_day2, since_day2))
         entries_cnt = rows(
-            "SELECT owner, COUNT(*) AS n FROM items WHERE kind='entries' AND updated >= ? AND deleted = 0 GROUP BY owner", (since,))
+            "SELECT owner, COUNT(*) AS n FROM items WHERE kind='entries' AND deleted = 0 AND json_extract(body,'$.date') >= ? GROUP BY owner", (since_day2,))
 
         # записи по дням (для графика, все юзеры вместе)
         per_day = rows(
             "SELECT json_extract(body,'$.date') AS day, COUNT(*) AS n FROM items "
-            "WHERE kind='entries' AND updated >= ? AND deleted = 0 GROUP BY day ORDER BY day", (since,))
+            "WHERE kind='entries' AND deleted = 0 AND json_extract(body,'$.date') >= ? GROUP BY day ORDER BY day", (since_day2,))
 
         # тренд веса каждого юзера за 60 дней (для витрины: «−0,4 кг/нед»)
+        # Д3(ревью): фильтр по дате взвешивания, не по времени правки —
+        # импортированные давние веса не должны попадать в «последние 60 дней»
+        from datetime import date as _d, timedelta as _td
+        since_day = (_d.today() - _td(days=60)).isoformat()
         weight_trend = {}
         for r in c.execute(
                 "SELECT owner, json_extract(body,'$.date') AS day, json_extract(body,'$.weightKg') AS kg FROM items "
-                "WHERE kind='weightLogs' AND deleted = 0 AND updated >= ? ORDER BY day", (now_ms() - 60 * 86400000,)):
+                "WHERE kind='weightLogs' AND deleted = 0 AND json_extract(body,'$.date') >= ? ORDER BY day", (since_day,)):
             weight_trend.setdefault(r['owner'], []).append((r['day'], r['kg']))
         def slope_pw(points):
             if len(points) < 2:
@@ -200,6 +211,7 @@ def admin_metrics(days: int = 30, user: sqlite3.Row = Depends(auth)) -> dict[str
             out_users.append({
                 'nickname': u['nickname'],
                 'activeDays': next((a['d'] for a in active_days if a['owner'] == uid), 0),
+                'prevDays': next((a['d'] for a in prev_days if a['owner'] == uid), 0),
                 'entries': next((e['n'] for e in entries_cnt if e['owner'] == uid), 0),
                 'appOpens': by_user.get(uid, {}).get('app_open', 0),
                 'topEvents': sorted(by_user.get(uid, {}).items(), key=lambda kv: -kv[1])[:6],
@@ -309,6 +321,11 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
             owner = str(body.get('ownerId') or uid)
             if ch.kind in PUBLIC_KINDS:
                 body['ownerId'] = owner  # каталог: автор = ownerId (может быть system у форков)
+                # Д4(ревью): перезаписывать чужой продукт нельзя — только свой (форк = новый id)
+                cur_owner = c.execute('SELECT owner FROM items WHERE kind = ? AND id = ?', (ch.kind, cid)).fetchone()
+                if cur_owner and cur_owner['owner'] not in (uid, 'system'):
+                    rejected += 1
+                    continue
                 if owner != uid and owner != 'system' and not body.get('isPublic', True):
                     rejected += 1
                     continue
@@ -341,7 +358,7 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
 
         # 3) отдать изменения новее since: личное — только своё, каталог — живой общий
         rows = c.execute('''SELECT kind, body, updated FROM items
-                            WHERE updated > ? AND (owner = ? OR (kind IN ('foods','recipes') AND deleted = 0))
+                            WHERE updated > ? AND kind != 'offcache' AND (owner = ? OR (kind IN ('foods','recipes') AND deleted = 0))
                             ORDER BY updated LIMIT 5000''',
                          (payload.since, uid)).fetchall()
         out: list[dict[str, Any]] = []
@@ -354,4 +371,7 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
         # 4) чистка старых tombstone (не чаще раза в час — по факту запроса, дёшево на SQLite)
         c.execute('DELETE FROM items WHERE deleted = 1 AND updated < ?', (server_now - TOMBSTONE_TTL_DAYS * 86400000,))
 
-    return {'changes': out, 'serverTime': server_now, 'applied': applied, 'rejected': rejected}
+    # Д2(ревью): курсор клиента — последняя фактически отданная запись (не текущее время сервера),
+    # иначе хвост за LIMIT 5000 теряется навсегда
+    max_updated = out[-1]['updated'] if out else None
+    return {'changes': out, 'serverTime': server_now, 'maxUpdated': max_updated, 'applied': applied, 'rejected': rejected}

@@ -44,6 +44,8 @@ export interface Entry {
   id: string; userId: string;
   date: string;            // YYYY-MM-DD, локальная
   timeEaten: string;       // HH:MM — у каждой записи своё
+  /** true — время фиктивное (импорт MFP: слот, не факт) — детектор окон срыва не учитывает */
+  timeApprox?: boolean;
   slotId: string;
   kind: 'food' | 'recipe'; refId: string; grams: number;
   snapshot: KbjuSnapshot;  // ккал/Б/Ж/У порции на момент ввода
@@ -68,6 +70,8 @@ export interface SlotMark {
 /** Снапшот дневной нормы: фиксируется за днём, прошлое не пересчитывается (решение В.). */
 export interface DayNorma {
   date: string; // YYYY-MM-DD, первичный ключ
+  /** true — снапшот создан задним числом (день впервые открыт позже) */
+  retro?: boolean;
   kcal: number; p: number; f: number; c: number;
   basis: 'formula' | 'adaptive';
   /** компоненты для экрана «почему такая цифра» */
