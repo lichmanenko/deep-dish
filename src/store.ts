@@ -236,14 +236,23 @@ export function weightTrend(points: WeightPoint[]): { slope: number; intercept: 
   return { slope, intercept: my - slope * mx };
 }
 
-function weightAt(points: WeightPoint[], date: string): number | null {
+/** ближайший вес к дате; side='left' — не позже даты (для правой границы окна), 'any' — любой (для левой) */
+function weightAt(points: WeightPoint[], date: string, side: 'left' | 'any' = 'any'): number | null {
   let best: WeightPoint | null = null; let bd = Infinity;
-  const t = new Date(date).getTime();
+  const t = new Date(date + 'T00:00:00').getTime();
   for (const p of points) {
-    const d = Math.abs(new Date(p.date).getTime() - t);
+    const pt = new Date(p.date + 'T00:00:00').getTime();
+    if (side === 'left' && pt > t) continue; // Д1(ревью): вес из будущего окну не принадлежит
+    const d = Math.abs(pt - t);
     if (d < bd) { bd = d; best = p; }
   }
   return best?.kg ?? null;
+}
+
+/** YYYY-MM-DD локальной даты (toISOString даёт UTC — сдвигает день после 21:00 МСК) */
+function isoLocal(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 export interface AdaptiveInfo {
@@ -258,7 +267,7 @@ export function adaptiveTdee(weights: WeightPoint[], intake: Map<string, number>
   for (let off = 0; off <= 92; off += 7) {
     const e = new Date(end); e.setDate(e.getDate() - off);
     const b = new Date(e); b.setDate(b.getDate() - 27);
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const iso = isoLocal;
     const from = iso(b), to = iso(e);
     let days = 0, sum = 0;
     for (let d = new Date(b); d <= e; d.setDate(d.getDate() + 1)) {
@@ -268,7 +277,7 @@ export function adaptiveTdee(weights: WeightPoint[], intake: Map<string, number>
       if (k > 0) { days++; sum += k; }
     }
     if (days < 21) continue; // неплотное окно пропускаем
-    const wa = weightAt(weights, from), wb = weightAt(weights, to);
+    const wa = weightAt(weights, from, 'any'), wb = weightAt(weights, to, 'left');
     if (wa === null || wb === null) continue;
     const delta = wb - wa;
     const tdee = (sum - delta * 7700) / 28;
@@ -301,7 +310,7 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
   const today = todayISO();
   const weights = await getWeights();
   const upTo = weights.length ? weights[weights.length - 1].date : today;
-  const from = new Date(new Date(upTo + 'T00:00:00').getTime() - 119 * 86400000).toISOString().slice(0, 10);
+  const from = isoLocal(new Date(new Date(upTo + 'T00:00:00').getTime() - 119 * 86400000));
   const intake = await getDailyIntake(from, upTo);
   const untrackedDays = new Set((await getSlotMarks()).map(m => m.date));
   const ad = adaptiveTdee(weights, intake, upTo, untrackedDays);
@@ -320,7 +329,7 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
   const gp = await goalProgress(date);
   if (gp) { detail.goalPct = gp.pct; detail.trendPw = gp.trendPw; detail.planPw = gp.planPw; }
   const snap: DayNorma = {
-    date, kcal, p: Math.round(kcal * (pr.macroPct?.p ?? 25) / 100 / 4),
+    date, retro: date < today ? true : undefined, kcal, p: Math.round(kcal * (pr.macroPct?.p ?? 25) / 100 / 4),
     f: Math.round(kcal * (pr.macroPct?.f ?? 30) / 100 / 9), c: Math.round(kcal * (pr.macroPct?.c ?? 45) / 100 / 4),
     basis: detail.tdeeAdaptive ? 'adaptive' : 'formula', detail, createdAt: Date.now(),
   };
@@ -347,8 +356,8 @@ export async function goalProgress(date = todayISO()): Promise<GoalProgress | nu
   if (!pr || (pr.goal !== 'lose' && pr.goal !== 'gain')) return null;
   const weights = await getWeights();
   // тренд замыкаем по вчерашнему дню относительно даты снапшота: данные дня влияют только завтра
-  const until = new Date(new Date(date + 'T00:00:00').getTime() - 86400000).toISOString().slice(0, 10);
-  const from = new Date(new Date(until + 'T00:00:00').getTime() - 55 * 86400000).toISOString().slice(0, 10);
+  const until = isoLocal(new Date(new Date(date + 'T00:00:00').getTime() - 86400000));
+  const from = isoLocal(new Date(new Date(until + 'T00:00:00').getTime() - 55 * 86400000));
   const win = weights.filter(w => w.date >= from && w.date <= until);
   if (win.length < 2) return null;
   const tr = weightTrend(win);

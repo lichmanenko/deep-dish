@@ -216,6 +216,10 @@ input[type=time].dd-input { padding: 0 8px; }
 /* ── Экран добавления: sticky-шапка и чипы ── */
 .dd-cat-chip { font-size: 12px; font-weight: 600; color: var(--mut); background: var(--tr); border: none; border-radius: 10px; padding: 5px 10px; cursor: pointer; }
 .dd-cat-chip.on { color: var(--acc-fg); background: var(--veil); }
+.dd-save-bar {
+  position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  z-index: 40; animation: dd-banner-in .25s ease;
+}
 .dd-banner {
   position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 14px; right: 14px; z-index: 45;
   border-radius: 18px; background: var(--panel);

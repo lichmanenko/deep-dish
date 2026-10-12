@@ -1,13 +1,14 @@
 {
   "name": "deep-dish",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "icons": "node scripts/gen-icons.mjs"
+    "icons": "node scripts/gen-icons.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "dexie": "^4.0.8",

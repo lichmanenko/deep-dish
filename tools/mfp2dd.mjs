@@ -197,7 +197,8 @@ for (const r of rows) {
   const f = foodFor(r);
   const [slotId, defTime] = SLOT_DEFAULTS[r.slotKey] ?? ['slot-snack', '12:00'];
   // граммовки в выгрузках MFP нет: строка/приём = порция (граммы 100 в условных единицах)
-  importedEntries.push({ id: uuid(), userId: 'local', date: r.date, timeEaten: defTime, slotId,
+  // timeApprox: время фиктивное (слот), детектор «окон срыва» такие записи не учитывает
+  importedEntries.push({ id: uuid(), userId: 'local', date: r.date, timeEaten: defTime, timeApprox: true, slotId,
     kind: 'food', refId: f.id, grams: 100,
     snapshot: { kcal: Math.round(r.kcal), p: r1(r.p), f: r1(r.f), c: r1(r.c) },
     createdAt: now, updatedAt: now, deletedAt: null });

@@ -18,6 +18,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
     setBusy(true); setMsg(null);
     try {
       const st = await registerDevice(srvAddr.trim(), nick.trim() || 'я', adminTok.trim() || undefined);
+      // А4: единое имя — серверный nickname = displayName профиля (подтянет витрина)
       saveSync(st); setSync(st);
       setMsg(`Подключено: ${st.nickname} (${st.role}). Теперь «Синхронизировать».`);
     } catch (e) { setMsg(`Не получилось: ${(e as Error).message}`); }
@@ -29,7 +30,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
     setBusy(true); setMsg(null);
     try {
       const r = await runSync();
-      setMsg(r.ok ? `Синк прошёл: отправлено ${r.pushed}, получено ${r.pulled}.` : `Синк не удался: ${r.error}`);
+      setMsg(r.ok ? 'Синхронизация прошла.' : `Синк не удался: ${r.error}`);
       setSync(loadSync());
       track('sync_manual', {});
     } catch (e) { setMsg(`Синк не удался: ${(e as Error).message}`); }
@@ -120,7 +121,7 @@ function MetricsCard() {
           <div className="flex justify-between items-baseline">
             <div className="text-sm font-semibold">{u.nickname}</div>
             <div className="text-[12px] dd-num" style={{ color: 'var(--mut)' }}>
-              {u.entries} записей · {u.activeDays} из 30 дней с записями
+              {u.entries} записей · {u.activeDays} из 30 дней{u.prevDays ? ` (было ${u.prevDays})` : ''}
             </div>
           </div>
           <div className="text-[12px] mt-0.5" style={{ color: 'var(--mut)' }}>

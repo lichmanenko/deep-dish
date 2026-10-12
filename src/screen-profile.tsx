@@ -47,7 +47,7 @@ export function ProfileScreen() {
     // v0.5.0: день ещё не закончился — сегодняшний снапшот нормы перезаписываем (прошлые не трогаем)
     const today = todayISO();
     await db.dayNormas.delete(today).catch(() => {});
-    ensureDayNorma(today).then(() => setDayNorma(null));
+    ensureDayNorma(today).then(n => { if (n) setDayNorma(n); }); // без обнуления: тренд-режим не мигает
     track('profile_saved', { goal: pr!.goal });
   }
 
@@ -99,13 +99,18 @@ export function ProfileScreen() {
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Активность</div>
         <div style={dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : undefined}>
-          <Segmented value={pr.activity} onChange={v => set({ activity: v })} options={[
-            { value: 'sedentary', label: 'сидячая' }, { value: 'light', label: 'лёгкая' },
-            { value: 'moderate', label: 'средняя' }, { value: 'active', label: 'высокая' }, { value: 'very_active', label: 'очень высокая' },
-          ]} />
-          {dayNorma?.basis === 'adaptive' && (
-            <button className="dd-seg-btn on" style={{ marginTop: 6, pointerEvents: 'none' }}>⚡ тренд</button>
-          )}
+          <div style={dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : undefined}>
+            <div className="dd-seg" style={{ display: 'flex' }}>
+              <button style={{ flex: 1 }} className={cx(pr.activity === 'sedentary' && 'on')} onClick={() => set({ activity: 'sedentary' })}>сидячая</button>
+              <button style={{ flex: 1 }} className={cx(pr.activity === 'light' && 'on')} onClick={() => set({ activity: 'light' })}>лёгкая</button>
+              <button style={{ flex: 1 }} className={cx(pr.activity === 'moderate' && 'on')} onClick={() => set({ activity: 'moderate' })}>средняя</button>
+              <button style={{ flex: 1 }} className={cx(pr.activity === 'active' && 'on')} onClick={() => set({ activity: 'active' })}>высокая</button>
+              <button style={{ flex: 1 }} className={cx(pr.activity === 'very_active' && 'on')} onClick={() => set({ activity: 'very_active' })}>оч. выс.</button>
+              {dayNorma?.basis === 'adaptive' && (
+                <button style={{ flex: 1 }} className="on">⚡ тренд</button>
+              )}
+            </div>
+          </div>
         </div>
         {dayNorma?.basis === 'adaptive' && (
           <div className="text-[11px] mt-1.5" style={{ color: 'var(--mut)' }}>
@@ -133,7 +138,8 @@ export function ProfileScreen() {
               ))}
             </div>
             <div className="text-[12px] mt-2 text-center" style={{ color: 'var(--acc-fg)' }}>
-              план: −{String(pr.paceKgPerWeek ?? 0.5).replace('.', ',')} кг/нед · норма станет {fmt(liveNorma?.kcal ?? norma?.kcal ?? 0)} ккал
+              план: −{String(pr.paceKgPerWeek ?? 0.5).replace('.', ',')} кг/нед · норма {fmt(liveNorma?.kcal ?? norma?.kcal ?? 0)} ккал
+              {liveNorma && liveNorma.kcal <= Math.round(liveNorma.bmr * 1.1) && ' (пол безопасности — не ниже 1,1× обмена)'}
             </div>
           </>
         )}
@@ -159,7 +165,7 @@ export function ProfileScreen() {
 
       {norma ? (
         <div className="dd-card p-5 text-center mb-4">
-          <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--mut)' }}>Дневная норма{dirty && ' · станет после сохранения'}</div>
+          <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--mut)' }}>Дневная норма{dayNorma?.retro ? ' · восстановлено задним числом' : dirty ? ' · станет после сохранения' : ''}</div>
           <button onClick={() => setWhyOpen(true)} aria-label="Почему такая норма"
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'block', width: '100%' }}>
             <div className="text-3xl font-extrabold dd-num mt-1" style={{ color: 'var(--acc-fg)' }}>
@@ -184,7 +190,12 @@ export function ProfileScreen() {
 
       <WhyNorma open={whyOpen} onClose={() => setWhyOpen(false)} norma={dayNorma} fallback={norma} />
 
-      <button className="dd-action strong" disabled={!dirty} onClick={save}>{saved ? '✓ Сохранено' : 'Сохранить'}</button>
+      {dirty && (
+        <div className="dd-save-bar">
+          <button className="dd-action strong" onClick={save}>Сохранить изменения</button>
+        </div>
+      )}
+      <button className="dd-action strong" disabled={!dirty} onClick={save} style={{ visibility: dirty ? 'hidden' : 'visible' }}>{saved ? '✓ Сохранено' : 'Сохранить'}</button>
     </div>
   );
 }
@@ -223,6 +234,14 @@ function WeightCard({ weights }: { weights: WeightPoint[] | undefined }) {
         <polyline points={pts} fill="none" stroke="var(--acc)" strokeWidth="1.5" strokeLinejoin="round" opacity=".85" />
         {trend && <line x1={x(0)} y1={y0} x2={x(shown.length - 1)} y2={yN} stroke="var(--mut)" strokeWidth="1" strokeDasharray="4 4" />}
       </svg>
+      {weights && weights.length > 0 && (
+        <div className="text-[11px] dd-num" style={{ color: 'var(--mut)', marginBottom: 2 }}>
+          старт (первое взвешивание): {fmtLocal(weights[0].kg)} кг · всего {(() => {
+            const d = Math.round((weights[weights.length - 1].kg - weights[0].kg) * 10) / 10;
+            return d > 0 ? '+' : '';
+          })()}{fmtLocal(Math.round((weights[weights.length - 1].kg - weights[0].kg) * 10) / 10)} кг
+        </div>
+      )}
       <div className="flex justify-between text-[10px] dd-num" style={{ color: 'var(--mut)' }}>
         <span>мин {fmtLocal(Math.round(min * 10) / 10)} · медиана {fmtLocal(Math.round(mid * 10) / 10)} · макс {fmtLocal(Math.round(max * 10) / 10)} кг</span>
         <span>тренд {trend ? `−${String(Math.abs(Math.round(trend.slope * 700) / 100)).replace('.', ',')} кг/нед` : '—'}</span>
