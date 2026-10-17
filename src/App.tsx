@@ -32,7 +32,7 @@ export default function App() {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }, [settings.theme]);
 
-  useEffect(() => { applyTheme(settings.palette, dark); }, [settings.palette, dark]);
+  useEffect(() => { applyTheme(settings.palette, dark, settings.textScale ?? 1); }, [settings.palette, dark, settings.textScale]);
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const h = () => { if (settings.theme === 'auto') applyTheme(settings.palette, mq.matches); };
@@ -131,7 +131,7 @@ export default function App() {
           {tab === 'profile' && <ProfileScreen />}
           {banner && !addOpen && (
             <div className={'dd-banner' + (banner.kind === 'warn' ? ' warn' : '')} role="status">
-              <div className="text-[13px] flex-1" style={{ lineHeight: 1.4 }}>{banner.text}</div>
+              <div className="text-[0.8125rem] flex-1" style={{ lineHeight: 1.4 }}>{banner.text}</div>
               <button className="dd-banner-x" aria-label="Закрыть"
                 onClick={() => { dismissBanner(banner.kind); setBanner(null); }}>✕</button>
             </div>

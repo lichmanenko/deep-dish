@@ -32,7 +32,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <button className="dd-action strong" onClick={next}>Далее</button>
           </div>
         )}
-        <div className="text-center text-[10px] pt-3" style={{ color: 'var(--mut)' }}>
+        <div className="text-center text-[0.625rem] pt-3" style={{ color: 'var(--mut)' }}>
           v{__APP_VER__} · {__APP_SHA__}
         </div>
       </div>
@@ -43,8 +43,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 function Step({ emoji, title, text }: { emoji: string; title: string; text: string }) {
   return (
     <div className="text-center pt-6">
-      <div className="text-[52px] mb-5">{emoji}</div>
-      <h2 className="text-[23px] font-bold tracking-tight">{title}</h2>
+      <div className="text-[3.25rem] mb-5">{emoji}</div>
+      <h2 className="text-[1.4375rem] font-bold tracking-tight">{title}</h2>
       <p className="text-sm mt-3 leading-relaxed px-2" style={{ color: 'var(--mut)' }}>{text}</p>
     </div>
   );
@@ -66,7 +66,7 @@ export function NumField({ label, value, onChange, unit }: {
           onChange(e.target.value.trim() === '' || Number.isNaN(n) ? undefined : n);
         }}
       />
-      {unit && <div className="text-[10px] mt-1" style={{ color: 'var(--mut)' }}>{unit}</div>}
+      {unit && <div className="text-[0.625rem] mt-1" style={{ color: 'var(--mut)' }}>{unit}</div>}
     </div>
   );
 }
@@ -86,18 +86,18 @@ function GoalStep({ onDone, skip }: { onDone: () => void; skip: () => void }) {
   return (
     <div>
       <div className="text-center mb-3 pt-2">
-        <div className="text-[38px]">🎯</div>
-        <h2 className="text-[21px] font-bold">Цель — по желанию</h2>
+        <div className="text-[2.375rem]">🎯</div>
+        <h2 className="text-[1.3125rem] font-bold">Цель — по желанию</h2>
       </div>
       <div className="dd-card p-4">
-        <div className="text-[12px] font-semibold mb-2" style={{ color: 'var(--mut)' }}>О СЕБЕ</div>
+        <div className="text-[0.75rem] font-semibold mb-2" style={{ color: 'var(--mut)' }}>О СЕБЕ</div>
         <div className="dd-input-row">
           <NumField label="возраст" value={pr.age} onChange={n => set({ age: n ?? 0 })} />
           <NumField label="рост, см" value={pr.heightCm} onChange={n => set({ heightCm: n ?? 0 })} />
           <NumField label="вес, кг" value={pr.weightKg} onChange={n => set({ weightKg: n })} />
         </div>
 
-        <div className="text-[12px] font-semibold mt-3 mb-2" style={{ color: 'var(--mut)' }}>ЦЕЛЬ</div>
+        <div className="text-[0.75rem] font-semibold mt-3 mb-2" style={{ color: 'var(--mut)' }}>ЦЕЛЬ</div>
         <Segmented value={pr.goal} onChange={v => set({ goal: v })} options={[
           { value: 'none', label: 'без цели' }, { value: 'lose', label: 'худеть' },
           { value: 'maintain', label: 'держать' }, { value: 'gain', label: 'набирать' },
@@ -107,18 +107,18 @@ function GoalStep({ onDone, skip }: { onDone: () => void; skip: () => void }) {
           <Segmented value={String(pr.paceKgPerWeek)} onChange={v => set({ paceKgPerWeek: parseFloat(v) })} options={[
             { value: '0.25', label: '0,25 кг/нед' }, { value: '0.5', label: '0,5' }, { value: '1', label: '1,0' },
           ]} />
-          <div className="text-[11px] mt-2 text-center" style={{ color: 'var(--mut)' }}>цель — темп изменения веса; конкретный вес не фиксируем</div>
+          <div className="text-[0.6875rem] mt-2 text-center" style={{ color: 'var(--mut)' }}>цель — темп изменения веса; конкретный вес не фиксируем</div>
         </>}
 
         {norma ? (
           <div className="dd-card p-3 mt-3 text-center" style={{ background: 'var(--veil)' }}>
             <div className="dd-num" style={{ color: 'var(--acc-fg)', fontWeight: 800, fontSize: 20 }}>{fmt(norma.kcal)} ккал</div>
-            <div className="text-[11px] mt-1 dd-num" style={{ color: 'var(--mut)' }}>
+            <div className="text-[0.6875rem] mt-1 dd-num" style={{ color: 'var(--mut)' }}>
               расход ≈ {norma.tdee}{norma.adj !== 0 ? ` → ${norma.adj > 0 ? '+' : ''}${norma.adj} по темпу` : ' · без поправки'}
             </div>
           </div>
         ) : (
-          <div className="text-[11px] mt-3 text-center" style={{ color: 'var(--mut)' }}>укажи текущий вес — посчитается норма</div>
+          <div className="text-[0.6875rem] mt-3 text-center" style={{ color: 'var(--mut)' }}>укажи текущий вес — посчитается норма</div>
         )}
       </div>
       <div className="flex gap-2 mt-3">
@@ -132,9 +132,9 @@ function GoalStep({ onDone, skip }: { onDone: () => void; skip: () => void }) {
 function InstallStep({ onDone }: { onDone: () => void }) {
   return (
     <div className="text-center pt-4">
-      <div className="text-[52px] mb-4">📲</div>
-      <h2 className="text-[22px] font-bold tracking-tight">Добавь на экран «Домой»</h2>
-      <div className="dd-card p-4 mt-4 text-left text-[13px] leading-relaxed" style={{ color: 'var(--mut)' }}>
+      <div className="text-[3.25rem] mb-4">📲</div>
+      <h2 className="text-[1.375rem] font-bold tracking-tight">Добавь на экран «Домой»</h2>
+      <div className="dd-card p-4 mt-4 text-left text-[0.8125rem] leading-relaxed" style={{ color: 'var(--mut)' }}>
         <div className="mb-2"><b style={{ color: 'var(--tx)' }}>1.</b> Нажми «Поделиться» <span className="dd-num">(квадрат со стрелкой)</span> внизу Safari</div>
         <div className="mb-2"><b style={{ color: 'var(--tx)' }}>2.</b> «На экран Домой» → «Добавить»</div>
         <div><b style={{ color: 'var(--tx)' }}>3.</b> Готово — приложение работает без интернета, иконка как у «родных»</div>

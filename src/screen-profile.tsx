@@ -91,7 +91,7 @@ export function ProfileScreen() {
           <NumField label="рост, см" value={pr.heightCm} onChange={n => set({ heightCm: n ?? 0 })} />
           <NumField label="вес, кг" value={pr.weightKg} onChange={n => set({ weightKg: n })} />
         </div>
-        <div className="text-[10px] mt-2" style={{ color: 'var(--mut)' }}>текущий вес — точка отсчёта нормы; изменение веса записывается как взвешивание</div>
+        <div className="text-[0.625rem] mt-2" style={{ color: 'var(--mut)' }}>текущий вес — точка отсчёта нормы; изменение веса записывается как взвешивание</div>
       </div>
 
       <WeightCard weights={weights} />
@@ -113,7 +113,7 @@ export function ProfileScreen() {
           </div>
         </div>
         {dayNorma?.basis === 'adaptive' && (
-          <div className="text-[11px] mt-1.5" style={{ color: 'var(--mut)' }}>
+          <div className="text-[0.6875rem] mt-1.5" style={{ color: 'var(--mut)' }}>
             расход берётся из твоей истории (что ел + как менялся вес), ручная активность пока не участвует
           </div>
         )}
@@ -127,7 +127,7 @@ export function ProfileScreen() {
           <button style={{ flex: 1 }} className={cx(pr.goal === 'gain' && 'on')} onClick={() => set({ goal: pr.goal === 'gain' ? 'none' : 'gain' })}>набирать</button>
         </div>
         {pr.goal === 'maintain' ? (
-          <div className="text-[12px] mt-2 text-center" style={{ color: 'var(--mut)' }}>норма подбирается так, чтобы вес сохранялся: {fmt(liveNorma?.kcal ?? 0)} ккал</div>
+          <div className="text-[0.75rem] mt-2 text-center" style={{ color: 'var(--mut)' }}>норма подбирается так, чтобы вес сохранялся: {fmt(liveNorma?.kcal ?? 0)} ккал</div>
         ) : pr.goal !== 'none' && (
           <>
             <div className="dd-field-label">Темп, кг в неделю</div>
@@ -137,7 +137,7 @@ export function ProfileScreen() {
                   onClick={() => set({ paceKgPerWeek: v })}>{String(v).replace('.', ',')}</button>
               ))}
             </div>
-            <div className="text-[12px] mt-2 text-center" style={{ color: 'var(--acc-fg)' }}>
+            <div className="text-[0.75rem] mt-2 text-center" style={{ color: 'var(--acc-fg)' }}>
               план: −{String(pr.paceKgPerWeek ?? 0.5).replace('.', ',')} кг/нед · норма {fmt(liveNorma?.kcal ?? norma?.kcal ?? 0)} ккал
               {liveNorma && liveNorma.kcal <= Math.round(liveNorma.bmr * 1.1) && ' (пол безопасности — не ниже 1,1× обмена)'}
             </div>
@@ -165,7 +165,7 @@ export function ProfileScreen() {
 
       {norma ? (
         <div className="dd-card p-5 text-center mb-4">
-          <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--mut)' }}>Дневная норма{dayNorma?.retro ? ' · восстановлено задним числом' : dirty ? ' · станет после сохранения' : ''}</div>
+          <div className="text-[0.6875rem] uppercase tracking-wider" style={{ color: 'var(--mut)' }}>Дневная норма{dayNorma?.retro ? ' · восстановлено задним числом' : dirty ? ' · станет после сохранения' : ''}</div>
           <button onClick={() => setWhyOpen(true)} aria-label="Почему такая норма"
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'block', width: '100%' }}>
             <div className="text-3xl font-extrabold dd-num mt-1" style={{ color: 'var(--acc-fg)' }}>
@@ -175,7 +175,7 @@ export function ProfileScreen() {
           </button>
           <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>ккал · Б {fmt(norma.p)} г · Ж {fmt(norma.f)} г · У {fmt(norma.c)} г</div>
           <button onClick={() => setWhyOpen(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
-            <div className="text-[10px] mt-2 dd-num" style={{ color: 'var(--mut)' }}>
+            <div className="text-[0.625rem] mt-2 dd-num" style={{ color: 'var(--mut)' }}>
               {dayNorma?.detail?.tdeeAdaptive
                 ? `формула ${fmt(dayNorma.detail.tdeeFormula ?? 0)} → факт ${fmt(dayNorma.detail.tdeeAdaptive)} по твоей истории · почему — тап`
                 : `расход ≈ ${norma.tdee}${norma.adj !== 0 ? ` → ${norma.adj > 0 ? '+' : '−'}${Math.abs(norma.adj)} по темпу` : ' · без поправки'} · почему — тап`}
@@ -235,18 +235,18 @@ function WeightCard({ weights }: { weights: WeightPoint[] | undefined }) {
         {trend && <line x1={x(0)} y1={y0} x2={x(shown.length - 1)} y2={yN} stroke="var(--mut)" strokeWidth="1" strokeDasharray="4 4" />}
       </svg>
       {weights && weights.length > 0 && (
-        <div className="text-[11px] dd-num" style={{ color: 'var(--mut)', marginBottom: 2 }}>
+        <div className="text-[0.6875rem] dd-num" style={{ color: 'var(--mut)', marginBottom: 2 }}>
           старт (первое взвешивание): {fmtLocal(weights[0].kg)} кг · всего {(() => {
             const d = Math.round((weights[weights.length - 1].kg - weights[0].kg) * 10) / 10;
             return d > 0 ? '+' : '';
           })()}{fmtLocal(Math.round((weights[weights.length - 1].kg - weights[0].kg) * 10) / 10)} кг
         </div>
       )}
-      <div className="flex justify-between text-[10px] dd-num" style={{ color: 'var(--mut)' }}>
+      <div className="flex justify-between text-[0.625rem] dd-num" style={{ color: 'var(--mut)' }}>
         <span>мин {fmtLocal(Math.round(min * 10) / 10)} · медиана {fmtLocal(Math.round(mid * 10) / 10)} · макс {fmtLocal(Math.round(max * 10) / 10)} кг</span>
         <span>тренд {trend ? `−${String(Math.abs(Math.round(trend.slope * 700) / 100)).replace('.', ',')} кг/нед` : '—'}</span>
       </div>
-      <div className="text-[10px] mt-0.5" style={{ color: 'var(--mut)' }}>пунктир на графике — тренд (усреднённая прямая по взвешиваниям, без скачков воды и соли)</div>
+      <div className="text-[0.625rem] mt-0.5" style={{ color: 'var(--mut)' }}>пунктир на графике — тренд (усреднённая прямая по взвешиваниям, без скачков воды и соли)</div>
 
     </div>
   );
@@ -284,11 +284,11 @@ function WhyNorma({ open, onClose, norma, fallback }: {
   rows.push(['Итог на день', `${fmt(kcal)} ккал${norma?.basis === 'adaptive' ? ' — формула, поправленная твоим фактом' : ' — по формуле'}`]);
   return (
     <Modal open={open} onClose={onClose}>
-      <div className="text-[15px] font-bold mb-2">Почему такая норма</div>
+      <div className="text-[0.9375rem] font-bold mb-2">Почему такая норма</div>
       {rows.map(([k, v]) => (
         <div key={k} className="py-1.5" style={{ borderBottom: '1px solid var(--tr)' }}>
-          <div className="text-[11px]" style={{ color: 'var(--mut)' }}>{k}</div>
-          <div className="text-[13px]">{v}</div>
+          <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>{k}</div>
+          <div className="text-[0.8125rem]">{v}</div>
         </div>
       ))}
       {norma && <p className="dd-modal-text" style={{ marginTop: 8 }}>Норма зафиксирована за {norma.date} и не пересчитается задним числом.</p>}

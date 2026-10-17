@@ -248,6 +248,7 @@ input[type=time].dd-input { padding: 0 8px; }
   background: var(--tr); color: var(--tx); display: block; width: 100%;
 }
 .dd-seg-btn.on { background: var(--veil); color: var(--acc-fg); font-weight: 700; }
+.dd-ingr-scroll { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 .dd-searchwrap { position: relative; }
 .dd-searchdot {
   position: absolute; right: 30px; top: 50%; transform: translateY(-50%);

@@ -46,7 +46,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
           <>
             <div className="py-3">
               <div className="text-sm">{syncStatusText()}</div>
-              <div className="text-[11px] mt-1" style={{ color: 'var(--mut)', wordBreak: 'break-all' }}>{sync.server}</div>
+              <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)', wordBreak: 'break-all' }}>{sync.server}</div>
             </div>
             <div className="pb-3">
               <button className="dd-action strong" style={{ width: '100%' }} disabled={busy} onClick={doSync}>
@@ -71,13 +71,13 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
             <input className="dd-input" placeholder="адрес сервера, напр. http://192.168.1.50:8687" value={srvAddr} onChange={e => setSrvAddr(e.target.value)} />
             <input className="dd-input mt-2" placeholder="твоё имя в семье" value={nick} onChange={e => setNick(e.target.value)} />
             <input className="dd-input mt-2" placeholder="админ-токен (для второго и далее участников)" value={adminTok} onChange={e => setAdminTok(e.target.value)} />
-            <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>первый подключившийся становится администратором; остальных подключает админ своим токеном</div>
+            <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>первый подключившийся становится администратором; остальных подключает админ своим токеном</div>
             <button className="dd-action strong mt-2" disabled={busy || !srvAddr.trim()} onClick={doRegister}>
               {busy ? 'Подключаю…' : 'Подключить'}
             </button>
           </div>
         )}
-        {msg && <div className="text-[12px] pb-3" style={{ color: 'var(--acc-fg)' }}>{msg}</div>}
+        {msg && <div className="text-[0.75rem] pb-3" style={{ color: 'var(--acc-fg)' }}>{msg}</div>}
       </div>
 
       {sync && isAdmin && <MetricsCard />}
@@ -120,11 +120,11 @@ function MetricsCard() {
         <div key={u.nickname} className="py-2.5" style={{ borderBottom: '1px solid var(--tr)' }}>
           <div className="flex justify-between items-baseline">
             <div className="text-sm font-semibold">{u.nickname}</div>
-            <div className="text-[12px] dd-num" style={{ color: 'var(--mut)' }}>
+            <div className="text-[0.75rem] dd-num" style={{ color: 'var(--mut)' }}>
               {u.entries} записей · {u.activeDays} из 30 дней{u.prevDays ? ` (было ${u.prevDays})` : ''}
             </div>
           </div>
-          <div className="text-[12px] mt-0.5" style={{ color: 'var(--mut)' }}>
+          <div className="text-[0.75rem] mt-0.5" style={{ color: 'var(--mut)' }}>
             открывал приложение {u.appOpens} раз
             {u.weightPw != null && ` · вес ${(u.weightPw > 0 ? '+' : '−') + String(Math.abs(u.weightPw)).replace('.', ',')} кг/нед`}
           </div>
@@ -132,20 +132,20 @@ function MetricsCard() {
       ))}
 
       <div className="py-2.5" style={{ borderBottom: '1px solid var(--tr)' }}>
-        <div className="text-[12px]" style={{ color: 'var(--mut)' }}>
+        <div className="text-[0.75rem]" style={{ color: 'var(--mut)' }}>
           регулярность: <b className="dd-num">{data.perDay.length}</b> дней с записями за месяц, всего <b className="dd-num">{totalEntries}</b> записей
         </div>
-        <div className="text-[12px] mt-0.5" style={{ color: 'var(--mut)' }}>
+        <div className="text-[0.75rem] mt-0.5" style={{ color: 'var(--mut)' }}>
           сессии: <b className="dd-num">{online}</b> онлайн · <b className="dd-num">{offline}</b> офлайн ({offlineShare}% времени без сети — данные не терялись)
         </div>
-        <div className="text-[12px] mt-0.5" style={{ color: 'var(--mut)' }}>
+        <div className="text-[0.75rem] mt-0.5" style={{ color: 'var(--mut)' }}>
           баннеры: показов <b className="dd-num">{data.banners.shown}</b>, закрытий <b className="dd-num">{data.banners.dismissed}</b>
           {data.banners.shown > 0 && ` (${Math.round(data.banners.dismissed / data.banners.shown * 100)}%)`}
         </div>
       </div>
 
       <div className="py-2">
-        <div className="text-[11px] mb-1" style={{ color: 'var(--mut)' }}>записи по дням (вся семья)</div>
+        <div className="text-[0.6875rem] mb-1" style={{ color: 'var(--mut)' }}>записи по дням (вся семья)</div>
         <MetricsSpark data={data.perDay.map(d => d.n)} />
       </div>
 
@@ -155,7 +155,7 @@ function MetricsCard() {
 }
 
 function MetricsSpark({ data }: { data: number[] }) {
-  if (data.length < 2) return <div className="text-[11px]" style={{ color: 'var(--mut)' }}>пока мало данных — появится через несколько дней</div>;
+  if (data.length < 2) return <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>пока мало данных — появится через несколько дней</div>;
   const W = 300, H = 56, pad = 4;
   const max = Math.max(...data, 1);
   const x = (i: number) => pad + (W - 2 * pad) * (i / (data.length - 1));
