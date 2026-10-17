@@ -48,7 +48,8 @@ body {
 
 /* ── Нижний лист ── */
 .dd-sheet-bg {
-  position: fixed; inset: 0; z-index: 50; background: rgba(8,10,14,.34);
+  position: fixed; inset: 0; z-index: 50; background: rgba(8,10,14,.30);
+  -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px);
   opacity: 0; pointer-events: none; transition: opacity .3s;
 }
 .dd-sheet-bg.show { opacity: 1; pointer-events: auto; }
@@ -93,7 +94,7 @@ body {
 .dd-sw.on::after { transform: translateX(18px); }
 
 /* ── Модал ── */
-.dd-modal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(8,10,14,.4); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.dd-modal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(8,10,14,.36); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); display: flex; align-items: center; justify-content: center; padding: 20px; }
 .dd-modal {
   width: 100%; max-width: 340px; border-radius: 26px; padding: 22px 20px;
   background: var(--panel);
@@ -309,4 +310,27 @@ input[type=time].dd-input { padding: 0 8px; }
 .dd-cal-dot {
   position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
   width: 4px; height: 4px; border-radius: 50%; background: var(--acc2);
+}
+
+/* ── Верхняя доппанель (типовые порции при создании продукта) ── */
+.dd-topsheet {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 51;
+  border-radius: 0 0 30px 30px;
+  background: var(--panel);
+  padding: calc(10px + env(safe-area-inset-top)) 16px 18px;
+  transform: translateY(-105%); transition: transform .4s cubic-bezier(.22,1,.36,1);
+  max-height: 78vh; overflow-y: auto;
+}
+.dd-topsheet.show { transform: translateY(0); }
+
+/* ── Свайп-влево для удаления строки (ингредиент рецепта) ── */
+.dd-swiperow { position: relative; overflow: hidden; border-radius: 14px; }
+.dd-swiperow-del {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end;
+  padding-right: 18px; color: #fff; background: linear-gradient(90deg, transparent, var(--warn));
+  font-size: 0.8125rem; font-weight: 650; border-radius: 14px;
+}
+.dd-swiperow-body {
+  position: relative; background: var(--panel); will-change: transform;
+  touch-action: pan-y;
 }

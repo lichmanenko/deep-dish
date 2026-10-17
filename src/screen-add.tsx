@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
 import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
 import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode } from './lib';
-import { Sheet, Modal, Confirm, Collapse, cx } from './ui';
+import { Sheet, Modal, Confirm, Collapse, TopSheet, SwipeRow, cx } from './ui';
 import { searchOff, saveOffHit, type OffHit } from './off';
 
 interface AddScreenProps {
@@ -496,6 +496,8 @@ function CreateFood({ open, initialName, onClose }: { open: boolean; initialName
   const [kcalTouched, setKcalTouched] = useState(false);
   type OffState = null | 'loading' | 'ok' | { error: string };
   const [offState, setOffState] = useState<OffState>(null);
+  const [portsOpen, setPortsOpen] = useState(false);
+  const [portRows, setPortRows] = useState<Array<{ label: string; amount: string }>>([]);
   const cats = useLiveQuery(async () => [...new Set((await db.foods.toArray()).map(x => x.category))].sort(), [], [] as string[]);
 
   useEffect(() => {
@@ -543,16 +545,21 @@ function CreateFood({ open, initialName, onClose }: { open: boolean; initialName
     track('off_lookup', { ok: true });
   }
 
+  const cleanPorts = () => portRows
+    .map(r => ({ label: r.label.trim(), amount: parseFloat(r.amount.replace(',', '.')) || 0 }))
+    .filter(r => r.label && r.amount > 0);
+
   async function save() {
     if (!valid) return;
     await saveCustomFood({
       name: name.trim(), brand: brand.trim() || undefined, category: cat, unit,
       kcalPer100g: parseFloat(kcal) || 0, pPer100g: nums[1], fPer100g: nums[2], cPer100g: nums[3],
       barcode: ean || undefined,
+      portions: cleanPorts(),
     });
     onClose(); reset();
   }
-  function reset() { setName(''); setBrand(''); setUnit('g'); setKcal(''); setP(''); setF(''); setC(''); setEan(''); setCat('Свои продукты'); setCatTouched(false); setKcalTouched(false); setOffState(null); }
+  function reset() { setName(''); setBrand(''); setUnit('g'); setKcal(''); setP(''); setF(''); setC(''); setEan(''); setCat('Свои продукты'); setCatTouched(false); setKcalTouched(false); setOffState(null); setPortsOpen(false); setPortRows([]); }
 
   return (
     <Sheet open={open} onClose={() => { onClose(); reset(); }} title="Свой продукт"
@@ -567,6 +574,11 @@ function CreateFood({ open, initialName, onClose }: { open: boolean; initialName
         <button className={unit === 'g' ? 'on' : ''} onClick={() => setUnit('g')}>граммы</button>
         <button className={unit === 'pc' ? 'on' : ''} onClick={() => setUnit('pc')}>порции (шт)</button>
       </div>
+      {unit === 'g' && (
+        <button className="dd-action mt-2" onClick={() => setPortsOpen(true)}>
+          ＋ Типовые порции{portRows.length ? ` · ${portRows.length}` : ''}
+        </button>
+      )}
 
       <div className="dd-field-label">КБЖУ {perLabel}</div>
       <div className="dd-input-row">
@@ -601,6 +613,25 @@ function CreateFood({ open, initialName, onClose }: { open: boolean; initialName
         <button className="dd-action" onClick={() => { onClose(); reset(); }}>Отмена</button>
         <button className="dd-action strong" disabled={!valid} onClick={save}>Сохранить</button>
       </div>
+
+      <TopSheet open={portsOpen} onClose={() => setPortsOpen(false)} title="Типовые порции">
+        <p className="text-[0.75rem] mb-2" style={{ color: 'var(--mut)' }}>
+          Пресеты веса для быстрой записи — например, как разливает кофемашина: S 180, M 250, L 350.
+        </p>
+        {portRows.map((row, i) => (
+          <div key={i} className="dd-item items-center" style={{ gap: 8, marginBottom: 0 }}>
+            <input className="dd-input" style={{ flex: 1, minWidth: 0 }} placeholder="имя (напр. M)" value={row.label}
+              onChange={e => setPortRows(portRows.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} />
+            <input className="dd-input dd-num" style={{ padding: '6px 8px', height: 34, width: 84, textAlign: 'center', flex: 'none' }} type="number" inputMode="decimal"
+              value={row.amount}
+              onChange={e => setPortRows(portRows.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} />
+            <span className="text-[0.6875rem]" style={{ color: 'var(--mut)', flex: 'none' }}>г</span>
+            <button className="plus" onClick={() => setPortRows(portRows.filter((_, j) => j !== i))}>−</button>
+          </div>
+        ))}
+        <button className="dd-action mt-2" onClick={() => setPortRows([...portRows, { label: '', amount: '' }])}>＋ Добавить порцию</button>
+        <button className="dd-action strong mt-2" style={{ width: '100%' }} onClick={() => setPortsOpen(false)}>Готово</button>
+      </TopSheet>
     </Sheet>
   );
 }
@@ -648,18 +679,20 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
       {items.map((it, i) => {
         const fd = picked[i];
         return (
-          <div key={it.foodId} className="dd-item items-center" style={{ gap: 8 }}>
-            <div className="flex-1 min-w-0">
-              <div className="nm truncate">{fd?.name}</div>
+          <SwipeRow key={it.foodId} onRemove={() => setItems(items.filter((_, j) => j !== i))}>
+            <div className="dd-item items-center" style={{ gap: 8, marginBottom: 0 }}>
+              <div className="flex-1 min-w-0">
+                <div className="nm truncate">{fd?.name}</div>
+              </div>
+              <input className="dd-input dd-num" style={{ padding: '6px 8px', height: 34, width: 74, textAlign: 'center', flex: 'none' }} type="number" inputMode="numeric"
+                value={it.grams}
+                onChange={e => setItems(items.map((x, j) => j === i ? { ...x, grams: parseFloat(e.target.value) || 0 } : x))} />
+              <span className="text-[0.6875rem]" style={{ color: 'var(--mut)', flex: 'none' }}>г</span>
             </div>
-            <input className="dd-input dd-num" style={{ padding: '6px 8px', height: 34, width: 74, textAlign: 'center', flex: 'none' }} type="number" inputMode="numeric"
-              value={it.grams}
-              onChange={e => setItems(items.map((x, j) => j === i ? { ...x, grams: parseFloat(e.target.value) || 0 } : x))} />
-            <span className="text-[0.6875rem]" style={{ color: 'var(--mut)', flex: 'none' }}>г</span>
-            <button className="plus" onClick={() => setItems(items.filter((_, j) => j !== i))}>−</button>
-          </div>
+          </SwipeRow>
         );
       })}
+      <div className="text-[0.625rem] mt-1" style={{ color: 'var(--mut)' }}>смахни строку влево — ингредиент удалится</div>
       <button className="dd-action" onClick={() => setPicking(true)}>＋ Добавить ингредиент</button>
 
       <div className="dd-field-label">Выход готового веса, г (весь рецепт)</div>

@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import type { Slot } from './db';
 import { PALETTES, type DeviceSettings, todayISO } from './lib';
-import { loadFlags, saveFlags, detectDangerWindows, BASE_FLAG_CATS, type FlagSettings } from './banner';
+import { loadFlags, saveFlags, BASE_FLAG_CATS, type FlagSettings } from './banner';
 import { exportJSON, exportCSV, download, wipeAll, track, importJSONText } from './store';
 import { Segmented, Confirm, Modal, Toggle } from './ui';
 
@@ -30,8 +30,6 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
   const [flagsOpen, setFlagsOpen] = useState(false);
   const cats = useLiveQuery(async () => [...new Set((await db.foods.filter(f => !f.deletedAt).toArray()).map(f => f.category))].filter(c => c !== 'Импорт MFP').sort(), [], [] as string[]);
   const FLAG_CATS = [...BASE_FLAG_CATS, ...new Set((cats ?? []).filter(c => !BASE_FLAG_CATS.includes(c)))];
-  const [dangerWins] = useState<Array<{ hour: number; count: number }>>([]);
-  detectDangerWindows().then(w => { dangerWins.splice(0, dangerWins.length, ...w); });
   const slots = useLiveQuery(async () =>
     (await db.slots.filter(s => !s.deletedAt).toArray()).sort((a, b) => a.sortOrder - b.sortOrder), [], [] as Slot[]);
 
@@ -82,11 +80,6 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
                     const f = { ...flags, cats: cs }; setFlags(f); saveFlags(f);
                   }}>{c}</button>
               ))}
-            </div>
-          )}
-          {dangerWins.length > 0 && (flags.praise || flags.warn) && (
-            <div className="text-[0.6875rem] mt-2" style={{ color: 'var(--mut)' }}>
-              найденные окна: {dangerWins.map(w => `${w.hour}:00 (${w.count}×)`).join(' · ')}
             </div>
           )}
         </div>
