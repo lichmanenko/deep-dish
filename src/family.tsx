@@ -12,6 +12,17 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [adminTok, setAdminTok] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [hcode, setHcode] = useState<string | null>(null);
+
+  useEffect(() => {
+    // код моста Apple Health: показываем, когда синк настроен
+    const st = loadSync();
+    if (!st) return;
+    fetch(st.server.replace(/\/+$/, '') + '/health/code', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
+      body: '{}', signal: AbortSignal.timeout(8000),
+    }).then(r => r.ok ? r.json() : null).then(r => r?.code && setHcode(r.code)).catch(() => {});
+  }, [sync?.lastOk]);
 
   async function doRegister() {
     if (busy) return;
@@ -62,6 +73,35 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                       .catch(() => setMsg('Токен: ' + sync.token));
                     track('admin_token_copy');
                   }}>Скопировать новый токен</button>
+              )}
+            </div>
+            <div className="py-3" style={{ borderTop: '1px solid var(--tr)' }}>
+              <div className="text-sm">Мост Apple Health</div>
+              <div className="text-[0.6875rem] mt-1 mb-2" style={{ color: 'var(--mut)' }}>
+                вес из Здоровья приезжает сам (шорткат по расписанию), итог калорий дня уходит в Здоровье. Инструкция — в Obsidian.
+              </div>
+              {hcode ? (
+                <div className="flex gap-2 items-center">
+                  <div className="dd-card flex-1 text-center dd-num" style={{ padding: '8px 6px', letterSpacing: '.06em' }}>{hcode}</div>
+                  <button className="dd-action" style={{ flex: 'none' }} onClick={() => {
+                    navigator.clipboard?.writeText(hcode).then(() => setMsg('Код моста скопирован.')).catch(() => setMsg('Код: ' + hcode));
+                    track('health_code_copy');
+                  }}>Скопировать</button>
+                  <button className="dd-action" style={{ flex: 'none' }} onClick={async () => {
+                    const st = loadSync(); if (!st) return;
+                    try {
+                      const r = await fetch(st.server.replace(/\/+$/, '') + '/health/code', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
+                        body: JSON.stringify({ reset: true }), signal: AbortSignal.timeout(8000),
+                      });
+                      const j = await r.json();
+                      if (j.code) { setHcode(j.code); setMsg('Код обновлён — старый больше не работает, обнови шорткат.'); }
+                    } catch { setMsg('Не удалось обновить код.'); }
+                    track('health_code_reset');
+                  }}>Обновить</button>
+                </div>
+              ) : (
+                <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>код недоступен — сервер старой версии (обнови server.py на NAS)</div>
               )}
             </div>
           </>

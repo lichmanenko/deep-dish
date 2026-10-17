@@ -57,6 +57,11 @@ def init_db() -> None:
         c.execute('''CREATE TABLE IF NOT EXISTS events (
             id TEXT PRIMARY KEY, userId TEXT NOT NULL, ts INTEGER NOT NULL,
             name TEXT NOT NULL, props TEXT NOT NULL)''')
+        # мост Apple Health (M3): короткий код вместо длинного токена в шорткате
+        try:
+            c.execute('ALTER TABLE users ADD COLUMN healthCode TEXT')
+        except sqlite3.OperationalError:
+            pass  # колонка уже есть
 
 
 init_db()
@@ -295,6 +300,92 @@ def off_search(q: str, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
                   ('offcache', cache_key, user['userId'], now_ms(), 0,
                    json.dumps({'ts': now_ms(), 'payload': payload}, ensure_ascii=False)))
     return payload
+
+
+# ── Мост Apple Health (M3): шорткат iOS ходит с коротким кодом (не с токеном) ──
+CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'  # без похожих 0/O/1/I
+
+
+def auth_code(code: str) -> sqlite3.Row:
+    code = (code or '').strip().upper()
+    if not code:
+        raise HTTPException(401, 'нужен код моста: ?code=...')
+    with db() as c:
+        u = c.execute('SELECT * FROM users WHERE healthCode = ?', (code,)).fetchone()
+    if not u:
+        raise HTTPException(401, 'код моста не опознан')
+    return u
+
+
+class CodeIn(BaseModel):
+    reset: bool = False
+
+
+@app.post('/health/code')
+def health_code(payload: CodeIn | None = None, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
+    reset = bool(payload and payload.reset)
+    with db() as c:
+        cur = c.execute('SELECT healthCode FROM users WHERE userId = ?', (user['userId'],)).fetchone()['healthCode']
+        if reset or not cur:
+            for _ in range(5):
+                code = ''.join(secrets.choice(CODE_ALPHABET) for _ in range(10))
+                if not c.execute('SELECT 1 FROM users WHERE healthCode = ?', (code,)).fetchone():
+                    c.execute('UPDATE users SET healthCode = ? WHERE userId = ?', (code, user['userId']))
+                    cur = code
+                    break
+    return {'code': cur}
+
+
+class HealthWeightIn(BaseModel):
+    date: str   # YYYY-MM-DD
+    kg: float
+
+
+@app.post('/health/weight')
+def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]:
+    """шорткат присылает взвешивания пачкой (например, за 7 дней); повтор — обновление, не дубль"""
+    u = auth_code(code)
+    import re as _re
+    now = now_ms()
+    applied = 0
+    with db() as c:
+        for it in items:
+            if not _re.match(r'^\d{4}-\d{2}-\d{2}$', it.date) or not (25 <= it.kg <= 350):
+                continue
+            iid = "hw-" + u['userId'] + "-" + it.date
+            body = json.dumps({'id': iid, 'userId': u['userId'], 'date': it.date,
+                               'weightKg': round(it.kg, 2), 'bodyFatPct': None,
+                               'createdAt': now, 'updatedAt': now, 'deletedAt': None},
+                              ensure_ascii=False)
+            c.execute("INSERT INTO items (kind, id, owner, updated, deleted, body) "
+                      "VALUES ('weightLogs', ?, ?, ?, 0, ?) "
+                      "ON CONFLICT(kind, id) DO UPDATE SET updated = excluded.updated, body = excluded.body",
+                      (iid, u['userId'], now, body))
+            # дедуп: ручная запись веса того же дня уходит в tombstone (мост — источник истины)
+            for r in c.execute("SELECT id, body FROM items WHERE kind = 'weightLogs' AND owner = ? AND deleted = 0",
+                               (u['userId'],)).fetchall():
+                if r['id'] == iid:
+                    continue
+                b = json.loads(r['body'])
+                if b.get('date') == it.date:
+                    c.execute('UPDATE items SET deleted = ? WHERE kind = ? AND id = ?', (now, 'weightLogs', r['id']))
+            applied += 1
+    return {'ok': True, 'applied': applied}
+
+
+@app.get('/health/day')
+def health_day(date: str, code: str = '') -> dict[str, Any]:
+    """итог калорий пользователя за дату — шорткат пишет его в Health (Dietary Energy)"""
+    u = auth_code(code)
+    kcal = 0.0
+    with db() as c:
+        rows = c.execute("SELECT body FROM items WHERE kind = 'entries' AND owner = ? AND deleted = 0",
+                         (u['userId'],)).fetchall()
+        for r in rows:
+            b = json.loads(r['body'])
+            if b.get('date') == date and not b.get('deletedAt'):
+                kcal += (b.get('snapshot') or {}).get('kcal', 0)
+    return {'date': date, 'kcal': round(kcal)}
 
 
 @app.post('/sync')
