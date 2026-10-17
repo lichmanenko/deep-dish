@@ -18,7 +18,7 @@ import { db, type Entry, type Slot, type SlotMark } from './db';
 import type { DayNorma } from './db';
 import { getEntries, getProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, getSlotMarks, toggleSlotMark, type GoalProgress } from './store';
 import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt, loadSettings } from './lib';
-import { Ring, Sheet, useSwipe, Slide, Confirm, cx, Modal } from './ui';
+import { Ring, Sheet, useSwipe, Slide, Confirm, cx, Modal, LogoMark } from './ui';
 
 export function TodayScreen({ date, setDate, onAdd, showTime }: {
   date: string; setDate: (d: string) => void; onAdd: (slot: Slot | null) => void; showTime: 'snacks' | 'all';
@@ -77,11 +77,8 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
           </button>
           <button className="dd-arrow" onClick={() => { setDate(shiftISO(date, 1)); setDir(-1); }} aria-label="Следующий день">›</button>
         </div>
-        <div className="flex items-center gap-1.5" style={{ color: 'var(--acc-fg)' }}>
-          <svg width="20" height="20" viewBox="0 0 96 96" style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx="48" cy="48" r="38" fill="none" stroke="var(--tr)" strokeWidth="12" />
-            <circle cx="48" cy="48" r="38" fill="none" stroke="var(--acc)" strokeWidth="12" strokeLinecap="round" strokeDasharray="172 239" />
-          </svg>
+        <div className="flex items-center gap-1.5">
+          <LogoMark size={22} />
           <span className="text-[1.125rem] font-bold tracking-tight" style={{ color: 'var(--tx)' }}>deep dish</span>
         </div>
       </div>
