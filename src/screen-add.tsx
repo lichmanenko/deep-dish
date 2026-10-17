@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
-import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
+import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
 import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode } from './lib';
 import { Sheet, Modal, Confirm, Collapse, cx } from './ui';
 import { searchOff, saveOffHit, type OffHit } from './off';
@@ -212,7 +212,7 @@ function Section({ title, id, defaultOpen, children }: { title: string; id: stri
 }
 
 function defaultGramsFor(i: CatalogItem): number {
-  if (i.kind === 'food' && i.unit === 'pc') return 100; // 1 порция = 100 условных г
+  if (i.unit === 'pc') return 100; // 1 порция = 100 условных г (продукты и рецепты)
   return i.kind === 'food' ? (i.food.portionG ?? 100) : 150;
 }
 
@@ -301,16 +301,26 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
         </div>
       </div>
 
+      {!!item.portions?.length && (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {item.portions.map(pp => (
+            <button key={pp.label} className="dd-cat-chip" onClick={() => setQty(String(pp.amount).replace('.', ','))}>
+              {pp.label} · {pp.amount}{isPc ? ' шт' : ' г'}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="dd-seg mt-3" style={{ display: 'flex' }}>
         {slots.sort((a, b) => a.sortOrder - b.sortOrder).filter(s => s.id !== 'slot-snack').map(s => (
           <button key={s.id} style={{ flex: 1 }} className={cx(s.id === slotId && 'on')} onClick={() => setSlotId(s.id)}>{s.emoji} {s.name}</button>
         ))}
       </div>
 
-      <div className="mt-4 text-center" style={{ fontSize: 18, lineHeight: 1.35 }}>
+      <div className="mt-4 text-center" style={{ fontSize: '1.125rem', lineHeight: 1.35 }}>
         <b className="dd-num">{fmt(item.per100.kcal * k)} ккал</b>
         <span className="dd-num"> · Б {fmt(item.per100.p * k)} · Ж {fmt(item.per100.f * k)} · У {fmt(item.per100.c * k)}</span>
-        <span style={{ color: 'var(--mut)' }}> на {isPc ? 'порцию' : 'порцию'}</span>
+        <span style={{ color: 'var(--mut)' }}> на порцию</span>
       </div>
 
       {warn && (
@@ -339,6 +349,8 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
   const [unit, setUnit] = useState<'g' | 'pc'>('g');
   const [kcal, setKcal] = useState(''); const [p, setP] = useState(''); const [f, setF] = useState(''); const [c, setC] = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
+  const [portRows, setPortRows] = useState<Array<{ label: string; amount: string }>>([]);
+  const [portsSaved, setPortsSaved] = useState(false);
   const cats = useLiveQuery(async () => [...new Set((await db.foods.toArray()).map(x => x.category))].sort(), [], [] as string[]);
 
   useEffect(() => {
@@ -351,6 +363,8 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
       setKcal(String(item.food.kcalPer100g)); setP(String(item.food.pPer100g));
       setF(String(item.food.fPer100g)); setC(String(item.food.cPer100g));
     }
+    setPortRows((item.portions ?? []).map(pp => ({ label: pp.label, amount: String(pp.amount) })));
+    setPortsSaved(false);
     setConfirmDel(false);
   }, [item]);
 
@@ -361,16 +375,28 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
   const valid = item.kind !== 'food' || (name.trim() !== '' && bjzuFull && kcal !== '' && parseFloat(kcal) > 0);
   const suspicious = item.kind === 'food' && bjzuFull && kcal !== '' && nums[1] + nums[2] + nums[3] > 0
     && kbjuSuspicious(parseFloat(kcal) || 0, nums[1], nums[2], nums[3], name);
+  const unitNow = item.kind === 'recipe' ? (item.recipe.unit ?? 'g') : unit;
+  const portUnitLabel = unitNow === 'pc' ? 'шт' : 'г';
+  const cleanPorts = () => portRows
+    .map(r => ({ label: r.label.trim(), amount: parseFloat(r.amount.replace(',', '.')) || 0 }))
+    .filter(r => r.label && r.amount > 0);
 
   async function save() {
     if (!valid || item?.kind !== 'food') return;
     await db.foods.update(item.id, {
       name: name.trim(), brand: brand.trim() || undefined, category: cat || 'Свои продукты', unit,
       kcalPer100g: parseFloat(kcal) || 0, pPer100g: nums[1], fPer100g: nums[2], cPer100g: nums[3],
+      portions: cleanPorts(),
       updatedAt: Date.now(),
     });
     track('food_edited');
     onClose();
+  }
+  async function saveRecipePorts() {
+    if (item?.kind !== 'recipe') return;
+    await savePortions('recipe', item.id, cleanPorts());
+    setPortsSaved(true);
+    track('food_edited', { what: 'recipe_portions' });
   }
   async function del() {
     if (!item) return;
@@ -382,16 +408,16 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
 
   return (
     <Sheet open={!!item} onClose={onClose} title={item.kind === 'recipe' ? 'Рецепт' : 'Продукт'}
-      note={item.kind === 'recipe' ? 'Рецепты пока можно только удалить (правка состава — в следующих версиях).' : undefined}>
+      note={item.kind === 'recipe' ? 'Состав рецепта не редактируется (пересоздай при нужде); типовые порции — ниже.' : undefined}>
       {item.kind === 'recipe' ? (
         <>
           <div className="dd-card p-4 text-center">
             <div className="text-[0.9375rem] font-semibold">{item.name}</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>{fmt(item.per100.kcal)} ккал/100 г готового</div>
-          </div>
-          <div className="flex gap-2 mt-4">
-            <button className="dd-action" onClick={onClose}>Отмена</button>
-            <button className="dd-action strong" style={{ color: 'var(--warn)' }} onClick={() => setConfirmDel(true)}>Удалить</button>
+            <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>
+              {item.unit === 'pc'
+                ? `${fmt(item.per100.kcal)} ккал/порция · вес порции ${fmt(item.recipe.portionG ?? 0)} г`
+                : `${fmt(item.per100.kcal)} ккал/100 г готового`}
+            </div>
           </div>
         </>
       ) : (
@@ -419,13 +445,39 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
             <option value="Свои продукты">Свои продукты</option>
             {(cats ?? []).map(x => <option key={x} value={x}>{x}</option>)}
           </select>
-          <div className="flex gap-2 mt-4">
-            <button className="dd-action" onClick={onClose}>Отмена</button>
-            <button className="dd-action strong" disabled={!valid} onClick={save}>Сохранить</button>
-          </div>
-          <button className="dd-action mt-2" style={{ color: 'var(--warn)' }} onClick={() => setConfirmDel(true)}>Удалить продукт</button>
         </>
       )}
+
+      <div className="dd-field-label">Типовые порции — один тап при записи</div>
+      {portRows.map((row, i) => (
+        <div key={i} className="dd-item items-center" style={{ gap: 8 }}>
+          <input className="dd-input" style={{ flex: 1, minWidth: 0 }} placeholder="имя (напр. M)" value={row.label}
+            onChange={e => setPortRows(portRows.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} />
+          <input className="dd-input dd-num" style={{ padding: '6px 8px', height: 34, width: 84, textAlign: 'center', flex: 'none' }} type="number" inputMode="decimal"
+            value={row.amount}
+            onChange={e => setPortRows(portRows.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} />
+          <span className="text-[0.6875rem]" style={{ color: 'var(--mut)', flex: 'none' }}>{portUnitLabel}</span>
+          <button className="plus" onClick={() => setPortRows(portRows.filter((_, j) => j !== i))}>−</button>
+        </div>
+      ))}
+      <button className="dd-action" onClick={() => setPortRows([...portRows, { label: '', amount: '' }])}>＋ Добавить порцию</button>
+
+      <div className="flex gap-2 mt-4">
+        {item.kind === 'recipe' ? (
+          <>
+            <button className="dd-action" onClick={onClose}>Закрыть</button>
+            <button className="dd-action strong" onClick={saveRecipePorts}>{portsSaved ? 'Сохранено ✓' : 'Сохранить порции'}</button>
+          </>
+        ) : (
+          <>
+            <button className="dd-action" onClick={onClose}>Отмена</button>
+            <button className="dd-action strong" disabled={!valid} onClick={save}>Сохранить</button>
+          </>
+        )}
+      </div>
+      <button className="dd-action mt-2" style={{ color: 'var(--warn)' }} onClick={() => setConfirmDel(true)}>
+        {item.kind === 'recipe' ? 'Удалить рецепт' : 'Удалить продукт'}
+      </button>
       <Confirm open={confirmDel} text={`Удалить «${item.name}» из каталога? Прошлые записи дневника останутся как есть.`}
         okLabel="Удалить" onCancel={() => setConfirmDel(false)} onOk={del} />
     </Sheet>
@@ -568,6 +620,8 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
   const [name, setName] = useState('');
   const [items, setItems] = useState<Array<{ foodId: string; grams: number }>>([]);
   const [yieldG, setYield] = useState('');
+  const [unit, setUnit] = useState<'g' | 'pc'>('g');
+  const [pcs, setPcs] = useState('');
   const [picking, setPicking] = useState(false);
   const [pickQ, setPickQ] = useState('');
   const [err, setErr] = useState('');
@@ -575,14 +629,17 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
   const foods = useLiveQuery(() => db.foods.filter(f => !f.deletedAt && !f.hidden).toArray(), [], []);
   const picked = items.map(i => foods?.find(f => f.id === i.foodId)).filter(Boolean) as NonNullable<typeof foods>;
   const totalKcal = items.reduce((s, it, i) => s + (picked[i] ? picked[i].kcalPer100g * it.grams / 100 : 0), 0);
+  const nPcs = Math.max(1, Math.round(parseFloat(pcs.replace(',', '.')) || 0));
 
   async function save() {
     if (!name || items.length === 0 || !parseFloat(yieldG)) { setErr('Нужны название, хотя бы один ингредиент и выход готового веса'); return; }
-    await saveRecipe(name, items, parseFloat(yieldG));
-    onClose(); setName(''); setItems([]); setYield(''); setErr('');
+    if (unit === 'pc' && !parseFloat(pcs)) { setErr('Укажи, на сколько порций делится рецепт'); return; }
+    await saveRecipe(name, items, parseFloat(yieldG), unit === 'pc' ? nPcs : 0);
+    onClose(); setName(''); setItems([]); setYield(''); setUnit('g'); setPcs(''); setErr('');
   }
 
   const filtered = (foods ?? []).filter(f => !pickQ || normE(f.name).includes(normE(pickQ))).slice(0, 40);
+  const yNum = parseFloat(yieldG);
 
   return (
     <Sheet open={open} onClose={onClose} title="Новый рецепт" note="Ингредиенты с граммовками + выход готового веса — КБЖУ посчитаются сами.">
@@ -608,10 +665,26 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="dd-field-label">Выход готового веса, г (весь рецепт)</div>
       <input className="dd-input dd-num" type="number" inputMode="numeric" value={yieldG} onChange={e => setYield(e.target.value)} placeholder="напр. 520" />
 
-      {items.length > 0 && parseFloat(yieldG) > 0 && (
+      <div className="dd-field-label">Как удобно записывать</div>
+      <div className="dd-seg">
+        <button className={unit === 'g' ? 'on' : ''} onClick={() => setUnit('g')}>граммами</button>
+        <button className={unit === 'pc' ? 'on' : ''} onClick={() => setUnit('pc')}>порциями</button>
+      </div>
+      {unit === 'pc' && (
+        <>
+          <div className="dd-field-label">Порций в рецепте</div>
+          <input className="dd-input dd-num" type="number" inputMode="numeric" value={pcs} onChange={e => setPcs(e.target.value)} placeholder="напр. 4" />
+        </>
+      )}
+
+      {items.length > 0 && yNum > 0 && (
         <div className="dd-card p-3 mt-3 text-center text-xs" style={{ color: 'var(--mut)' }}>
           Весь рецепт: <b style={{ color: 'var(--tx)' }} className="dd-num">{fmt(totalKcal)} ккал</b> ·
-          на 100 г: <b style={{ color: 'var(--tx)' }} className="dd-num">{fmt(totalKcal / parseFloat(yieldG) * 100)} ккал</b>
+          на 100 г: <b style={{ color: 'var(--tx)' }} className="dd-num">{fmt(totalKcal / yNum * 100)} ккал</b>
+          {unit === 'pc' && nPcs >= 1 && (<>
+            <br />в порции: <b style={{ color: 'var(--tx)' }} className="dd-num">{fmt(totalKcal / nPcs)} ккал</b> · вес порции{' '}
+            <b style={{ color: 'var(--tx)' }} className="dd-num">{fmt(yNum / nPcs)} г</b>
+          </>)}
         </div>
       )}
       {err && <div className="text-xs mt-2" style={{ color: 'var(--warn)' }}>{err}</div>}

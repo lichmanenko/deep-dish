@@ -149,7 +149,7 @@ function MetricsCard() {
         <MetricsSpark data={data.perDay.map(d => d.n)} />
       </div>
 
-      <button className="dd-link-btn" style={{ display: 'block', margin: '4px auto 0', fontSize: 12 }} onClick={load}>обновить</button>
+      <button className="dd-link-btn" style={{ display: 'block', margin: '4px auto 0', fontSize: '0.75rem' }} onClick={load}>обновить</button>
     </div>
   );
 }

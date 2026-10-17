@@ -64,14 +64,14 @@ body {
 .dd-sheet.dragging { transition: none; }
 .dd-sheet-head { touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; min-height: 38px; }
 .dd-grab { width: 44px; height: 5px; border-radius: 3px; background: var(--tr); margin: 0 auto 10px; }
-.dd-sheet-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-.dd-sheet-note { font-size: 12.5px; color: var(--mut); margin-bottom: 14px; line-height: 1.45; }
+.dd-sheet-title { font-size: 1.125rem; font-weight: 700; margin-bottom: 4px; }
+.dd-sheet-note { font-size: 0.78125rem; color: var(--mut); margin-bottom: 14px; line-height: 1.45; }
 
 /* ── Действие (кнопка без кнопочности) ── */
 .dd-action {
   display: block; width: 100%; padding: 15px; border-radius: 22px; border: none;
   background: linear-gradient(135deg, var(--veil), color-mix(in srgb, var(--veil) 55%, transparent));
-  color: var(--acc-fg); font: inherit; font-size: 15.5px; font-weight: 650; cursor: pointer;
+  color: var(--acc-fg); font: inherit; font-size: 0.96875rem; font-weight: 650; cursor: pointer;
 }
 .dd-action.strong { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; }
 .dark .dd-action.strong { color: #101B24; }
@@ -80,7 +80,7 @@ body {
 /* ── Сегмент ── */
 .dd-seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .dd-seg button {
-  font: inherit; font-size: 13px; font-weight: 600; padding: 8px 13px; border-radius: 14px;
+  font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 8px 13px; border-radius: 14px;
   border: none; background: var(--veil); color: var(--mut); cursor: pointer;
 }
 .dd-seg button.on { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; }
@@ -99,7 +99,7 @@ body {
   background: var(--panel);
   box-shadow: 0 20px 50px rgba(10,14,20,.25);
 }
-.dd-modal-text { font-size: 14.5px; line-height: 1.5; }
+.dd-modal-text { font-size: 0.90625rem; line-height: 1.5; }
 .dd-modal-row { display: flex; gap: 10px; margin-top: 18px; }
 
 /* ── Сворачиваемая секция ── */
@@ -110,9 +110,9 @@ body {
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
   font: inherit; color: var(--tx); cursor: pointer; margin-bottom: 8px; text-align: left;
 }
-.dd-collapse-title { font-size: 15px; font-weight: 650; }
-.dd-collapse-right { display: flex; align-items: center; gap: 10px; color: var(--mut); font-size: 12px; }
-.dd-chev { font-size: 16px; transition: transform .2s; display: inline-block; }
+.dd-collapse-title { font-size: 0.9375rem; font-weight: 650; }
+.dd-collapse-right { display: flex; align-items: center; gap: 10px; color: var(--mut); font-size: 0.75rem; }
+.dd-chev { font-size: 1.0rem; transition: transform .2s; display: inline-block; }
 .dd-chev.up { transform: rotate(180deg); }
 
 /* ── Строка позиции ── */
@@ -122,23 +122,23 @@ body {
   background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
   font: inherit; color: var(--tx); text-align: left; margin-bottom: 6px; cursor: pointer;
 }
-.dd-item .nm { font-size: 14.5px; font-weight: 550; }
-.dd-item .sub { font-size: 11.5px; color: var(--mut); margin-top: 2px; }
-.dd-item .kc { font-size: 12.5px; color: var(--mut); white-space: nowrap; }
+.dd-item .nm { font-size: 0.90625rem; font-weight: 550; }
+.dd-item .sub { font-size: 0.71875rem; color: var(--mut); margin-top: 2px; }
+.dd-item .kc { font-size: 0.78125rem; color: var(--mut); white-space: nowrap; }
 .dd-item .dd-more {
   flex: none; width: 30px; height: 34px; border-radius: 11px; border: none;
-  background: transparent; color: var(--mut); font-size: 17px; font-weight: 700; cursor: pointer;
+  background: transparent; color: var(--mut); font-size: 1.0625rem; font-weight: 700; cursor: pointer;
 }
 .dd-item .plus {
   flex: none; width: 34px; height: 34px; border-radius: 12px; border: none;
-  background: var(--veil); color: var(--acc-fg); font-size: 18px; font-weight: 700; cursor: pointer;
+  background: var(--veil); color: var(--acc-fg); font-size: 1.125rem; font-weight: 700; cursor: pointer;
 }
 
 /* ── Поля ввода ── */
 .dd-input {
   width: 100%; height: 48px; padding: 0 14px; border-radius: 18px; border: none;
   background: var(--panel);
-  font: inherit; font-size: 15px; color: var(--tx); outline: none;
+  font: inherit; font-size: 0.9375rem; color: var(--tx); outline: none;
   -webkit-text-fill-color: var(--tx);
   -webkit-appearance: none; appearance: none; min-width: 0;
 }
@@ -148,7 +148,7 @@ input[type=time].dd-input { padding: 0 8px; }
 .dd-input[disabled] { opacity: .75; }
 .dd-input[readonly] { opacity: .9; }
 .dd-input::placeholder { color: var(--mut); }
-.dd-field-label { font-size: 12px; font-weight: 600; color: var(--mut); margin: 12px 2px 6px; }
+.dd-field-label { font-size: 0.75rem; font-weight: 600; color: var(--mut); margin: 12px 2px 6px; }
 .dd-input-row { display: flex; gap: 8px; }
 .dd-input-row .dd-input { flex: 1; }
 
@@ -161,10 +161,10 @@ input[type=time].dd-input { padding: 0 8px; }
 
 /* ── Таб-бар: см. блок ниже (плотная панель + автоскрытие) ── */
 .dd-tab {
-  flex: 1; text-align: center; padding: 9px 4px; border-radius: 18px; font-size: 11px;
+  flex: 1; text-align: center; padding: 9px 4px; border-radius: 18px; font-size: 0.6875rem;
   color: var(--mut); background: transparent; border: none; font-weight: 600; cursor: pointer; font-family: inherit;
 }
-.dd-tab .ti { font-size: 30px; display: flex; justify-content: center; margin-bottom: 2px; opacity: .92; line-height: 1; }
+.dd-tab .ti { font-size: 1.875rem; display: flex; justify-content: center; margin-bottom: 2px; opacity: .92; line-height: 1; }
 .dd-tab.on { background: var(--glass); color: var(--acc-fg); }
 
 /* ── Онбординг: экран без прокрутки, закреплённые шапка/подвал ── */
@@ -189,10 +189,10 @@ input[type=time].dd-input { padding: 0 8px; }
   background: var(--bg2);
   box-shadow: 0 14px 34px rgba(10,14,20,.24);
 }
-#dd-update-toast .dd-upd-text { font-size: 13.5px; font-weight: 600; text-align: center; }
+#dd-update-toast .dd-upd-text { font-size: 0.84375rem; font-weight: 600; text-align: center; }
 #dd-update-toast .dd-upd-row { display: flex; gap: 8px; margin-top: 8px; }
 #dd-update-toast button {
-  flex: 1; border: none; border-radius: 14px; padding: 10px; font: inherit; font-size: 13.5px; font-weight: 650; cursor: pointer;
+  flex: 1; border: none; border-radius: 14px; padding: 10px; font: inherit; font-size: 0.84375rem; font-weight: 650; cursor: pointer;
 }
 #dd-update-toast .dd-upd-later { background: var(--tr); color: var(--mut); }
 #dd-update-toast .dd-upd-apply { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; }
@@ -214,7 +214,7 @@ input[type=time].dd-input { padding: 0 8px; }
 }
 
 /* ── Экран добавления: sticky-шапка и чипы ── */
-.dd-cat-chip { font-size: 12px; font-weight: 600; color: var(--mut); background: var(--tr); border: none; border-radius: 10px; padding: 5px 10px; cursor: pointer; }
+.dd-cat-chip { font-size: 0.75rem; font-weight: 600; color: var(--mut); background: var(--tr); border: none; border-radius: 10px; padding: 5px 10px; cursor: pointer; }
 .dd-cat-chip.on { color: var(--acc-fg); background: var(--veil); }
 .dd-save-bar {
   position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
@@ -232,11 +232,11 @@ input[type=time].dd-input { padding: 0 8px; }
   background: linear-gradient(180deg, var(--acc), var(--acc2));
 }
 .dd-banner.warn::before { background: linear-gradient(180deg, var(--warn), var(--acc2)); }
-.dd-banner-x { background: none; border: none; color: var(--mut); font-size: 13px; padding: 6px; cursor: pointer; flex: none; }
+.dd-banner-x { background: none; border: none; color: var(--mut); font-size: 0.8125rem; padding: 6px; cursor: pointer; flex: none; }
 @keyframes dd-banner-in { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
 .dd-slot-link { background: none; border: none; padding: 0; cursor: pointer; color: var(--tx); display: inline-flex; align-items: baseline; }
 .dd-slot-link > span:last-child { }
-.dd-chip-adaptive { font-size: 10px; font-weight: 700; color: var(--acc-fg); background: var(--tr); border-radius: 8px; padding: 2px 7px; }
+.dd-chip-adaptive { font-size: 0.625rem; font-weight: 700; color: var(--acc-fg); background: var(--tr); border-radius: 8px; padding: 2px 7px; }
 .dd-avatar {
   width: 56px; height: 56px; border-radius: 50%; overflow: hidden; flex: none;
   background: var(--tr); color: var(--acc-fg); border: none; cursor: pointer;
@@ -244,7 +244,7 @@ input[type=time].dd-input { padding: 0 8px; }
 }
 .dd-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .dd-seg-btn {
-  font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 11px; border: none;
+  font: inherit; font-size: 0.8125rem; padding: 7px 12px; border-radius: 11px; border: none;
   background: var(--tr); color: var(--tx); display: block; width: 100%;
 }
 .dd-seg-btn.on { background: var(--veil); color: var(--acc-fg); font-weight: 700; }
@@ -259,48 +259,48 @@ input[type=time].dd-input { padding: 0 8px; }
 .dd-searchclear {
   position: absolute; right: 26px; top: 50%; transform: translateY(-50%);
   width: 30px; height: 30px; border-radius: 10px; border: none; background: none;
-  color: var(--mut); font-size: 14px; cursor: pointer;
+  color: var(--mut); font-size: 0.875rem; cursor: pointer;
 }
 .dd-addhead {
   position: sticky; top: 0; z-index: 30;
   background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 78%, transparent 100%);
   padding-bottom: 6px;
 }
-.dd-chiprow-title { font-size: 11px; font-weight: 700; color: var(--mut); margin: 6px 2px 5px; letter-spacing: .04em; text-transform: uppercase; }
+.dd-chiprow-title { font-size: 0.6875rem; font-weight: 700; color: var(--mut); margin: 6px 2px 5px; letter-spacing: .04em; text-transform: uppercase; }
 .dd-chiprow { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; scrollbar-width: none; }
 .dd-chiprow::-webkit-scrollbar { display: none; }
 .dd-qchip {
   flex: none; display: flex; align-items: center; gap: 7px; padding: 9px 9px 9px 13px; border-radius: 16px;
   background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-  font-size: 13px; cursor: pointer;
+  font-size: 0.8125rem; cursor: pointer;
 }
 .dd-qchip-nm { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-.dd-qchip-kc { font-size: 11px; color: var(--mut); }
+.dd-qchip-kc { font-size: 0.6875rem; color: var(--mut); }
 .dd-qchip-plus {
   flex: none; width: 26px; height: 26px; border-radius: 9px; border: none;
-  background: var(--veil); color: var(--acc-fg); font-size: 15px; font-weight: 700; cursor: pointer;
+  background: var(--veil); color: var(--acc-fg); font-size: 0.9375rem; font-weight: 700; cursor: pointer;
 }
-.dd-allhead { font-size: 11px; font-weight: 700; color: var(--mut); margin: 14px 2px 8px; letter-spacing: .04em; text-transform: uppercase; }
-.dd-slot-save { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px 7px; opacity: .7; }
-.dd-slot-add { font-size: 12px; color: var(--acc-fg); padding: 6px 0 2px 25px; cursor: pointer; font-weight: 600; }
+.dd-allhead { font-size: 0.6875rem; font-weight: 700; color: var(--mut); margin: 14px 2px 8px; letter-spacing: .04em; text-transform: uppercase; }
+.dd-slot-save { background: none; border: none; font-size: 0.875rem; cursor: pointer; padding: 4px 7px; opacity: .7; }
+.dd-slot-add { font-size: 0.75rem; color: var(--acc-fg); padding: 6px 0 2px 25px; cursor: pointer; font-weight: 600; }
 
 /* ── Прочее ── */
 .dd-info {
   width: 28px; height: 28px; border-radius: 10px; border: none; background: var(--tr);
-  color: var(--acc-fg); font-size: 14px; font-weight: 700; cursor: pointer;
+  color: var(--acc-fg); font-size: 0.875rem; font-weight: 700; cursor: pointer;
 }
 .dd-arrow {
   width: 30px; height: 38px; border-radius: 10px; border: none; background: none;
-  color: var(--acc-fg); font-size: 26px; font-weight: 800; cursor: pointer; flex: none;
+  color: var(--acc-fg); font-size: 1.625rem; font-weight: 800; cursor: pointer; flex: none;
   line-height: 1; display: flex; align-items: center; justify-content: center; opacity: .9;
 }
-.dd-link-btn { background: none; border: none; color: var(--acc-fg); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; padding: 8px 10px; }
-.dd-warnmark { color: var(--warn); font-size: 12px; }
-.dd-star { font-size: 13px; }
+.dd-link-btn { background: none; border: none; color: var(--acc-fg); font: inherit; font-size: 0.84375rem; font-weight: 600; cursor: pointer; padding: 8px 10px; }
+.dd-warnmark { color: var(--warn); font-size: 0.75rem; }
+.dd-star { font-size: 0.8125rem; }
 .dd-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .dd-cal-cell {
   padding: 9px 0; border-radius: 14px; border: none; background: var(--tr); color: var(--tx);
-  font: inherit; font-size: 13px; cursor: pointer;
+  font: inherit; font-size: 0.8125rem; cursor: pointer;
 }
 .dd-cal-cell.sel { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; font-weight: 700; }
 .dark .dd-cal-cell.sel { color: #101B24; }

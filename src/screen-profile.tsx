@@ -98,19 +98,17 @@ export function ProfileScreen() {
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Активность</div>
-        <div style={dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : undefined}>
-          <div style={dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : undefined}>
-            <div className="dd-seg" style={{ display: 'flex' }}>
-              <button style={{ flex: 1 }} className={cx(pr.activity === 'sedentary' && 'on')} onClick={() => set({ activity: 'sedentary' })}>сидячая</button>
-              <button style={{ flex: 1 }} className={cx(pr.activity === 'light' && 'on')} onClick={() => set({ activity: 'light' })}>лёгкая</button>
-              <button style={{ flex: 1 }} className={cx(pr.activity === 'moderate' && 'on')} onClick={() => set({ activity: 'moderate' })}>средняя</button>
-              <button style={{ flex: 1 }} className={cx(pr.activity === 'active' && 'on')} onClick={() => set({ activity: 'active' })}>высокая</button>
-              <button style={{ flex: 1 }} className={cx(pr.activity === 'very_active' && 'on')} onClick={() => set({ activity: 'very_active' })}>оч. выс.</button>
-              {dayNorma?.basis === 'adaptive' && (
-                <button style={{ flex: 1 }} className="on">⚡ тренд</button>
-              )}
-            </div>
+        <div className="dd-seg" style={{ display: 'flex' }}>
+          <div style={{ flex: 5, display: 'flex', gap: 6, ...(dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : {}) }}>
+            <button style={{ flex: 1 }} className={cx(pr.activity === 'sedentary' && 'on')} onClick={() => set({ activity: 'sedentary' })}>сидячая</button>
+            <button style={{ flex: 1 }} className={cx(pr.activity === 'light' && 'on')} onClick={() => set({ activity: 'light' })}>лёгкая</button>
+            <button style={{ flex: 1 }} className={cx(pr.activity === 'moderate' && 'on')} onClick={() => set({ activity: 'moderate' })}>средняя</button>
+            <button style={{ flex: 1 }} className={cx(pr.activity === 'active' && 'on')} onClick={() => set({ activity: 'active' })}>высокая</button>
+            <button style={{ flex: 1 }} className={cx(pr.activity === 'very_active' && 'on')} onClick={() => set({ activity: 'very_active' })}>оч. выс.</button>
           </div>
+          {dayNorma?.basis === 'adaptive' && (
+            <button style={{ flex: 1 }} className="on" aria-disabled="true">⚡ тренд</button>
+          )}
         </div>
         {dayNorma?.basis === 'adaptive' && (
           <div className="text-[0.6875rem] mt-1.5" style={{ color: 'var(--mut)' }}>
@@ -226,7 +224,7 @@ function WeightCard({ weights }: { weights: WeightPoint[] | undefined }) {
     <div className="dd-card p-4 mb-4">
       <div className="flex justify-between items-baseline">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Динамика веса</div>
-        <div className="dd-num font-bold" style={{ fontSize: 13, color: delta > 0 ? 'var(--warn)' : 'var(--ok)' }}>
+        <div className="dd-num font-bold" style={{ fontSize: '0.8125rem', color: delta > 0 ? 'var(--warn)' : 'var(--ok)' }}>
           {delta > 0 ? '+' : ''}{delta} кг за 6 мес
         </div>
       </div>

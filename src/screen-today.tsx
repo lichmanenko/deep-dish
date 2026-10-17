@@ -1,11 +1,11 @@
-function MacroChip({ v, goal, k }: { v: number; goal?: number; k: string }) {
+function MacroChip({ v, goal, k, compact }: { v: number; goal?: number; k: string; compact?: boolean }) {
   const over = goal !== undefined && v > goal;
   return (
     <div className="dd-card flex-1 text-center py-2.5">
       <div className="text-[0.9375rem] font-bold dd-num flex items-center justify-center gap-1" style={over ? { color: 'var(--warn)' } : undefined}>
         {fmt(v)} г{over && <span className="text-[0.6875rem]">▲</span>}
       </div>
-      <div className="text-[0.6875rem] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>
+      {!compact && <div className="text-[0.6875rem] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>}
     </div>
   );
 }
@@ -16,7 +16,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Entry, type Slot, type SlotMark } from './db';
 import type { DayNorma } from './db';
 import { getEntries, getProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, getSlotMarks, toggleSlotMark, type GoalProgress } from './store';
-import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt } from './lib';
+import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt, loadSettings } from './lib';
 import { Ring, Sheet, useSwipe, Slide, Confirm, cx, Modal } from './ui';
 
 export function TodayScreen({ date, setDate, onAdd, showTime }: {
@@ -25,6 +25,8 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
   const entries = useLiveQuery(() => getEntries(date), [date], [] as Entry[]);
   const slots = useLiveQuery(() => dbSlots(), [], [] as Slot[]);
   const profile = useLiveQuery(() => getProfile(), []);
+  // крупные шрифты: в кольцах и чипах только числа, подписи-слова скрыты (В., 17.10)
+  const compact = useMemo(() => (loadSettings().textScale ?? 1) > 1.05, []);
   // норма дня: снапшот, фиксируется за днём при первом просмотре (прошлое не пересчитывается)
   const [norma, setNorma] = useState<DayNorma | null>(null);
   useEffect(() => { ensureDayNorma(date).then(setNorma); }, [date, profile?.updatedAt]);
@@ -96,31 +98,33 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                 {ringMode === 'kcal' ? (
                   <Ring percent={percent}>
                     <div className="text-lg font-extrabold dd-num">{fmt(rest)}</div>
-                    <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось</div>
+                    {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось</div>}
                   </Ring>
                 ) : (
                   <MacroRing p={totals.p * 4} f={totals.f * 9} c={totals.c * 4} cap={target}>
                     <div className="text-lg font-extrabold dd-num">{fmt(rest)}</div>
-                    <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось</div>
+                    {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось</div>}
                   </MacroRing>
                 )}
               </button>
             </div>
             <div className="text-center px-1">
               <div className="text-xl font-bold dd-num">{fmt(totals.kcal)}</div>
-              <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>из {fmt(target)} · {percent}%</div>
+              {!compact
+                ? <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>из {fmt(target)} · {percent}%</div>
+                : <div className="text-xs mt-1 dd-num" style={{ color: 'var(--mut)' }}>{percent}%</div>}
               {percent > 100 && <div className="text-xs mt-1" style={{ color: 'var(--warn)' }}>↑ перебор на {fmt(totals.kcal - target)}</div>}
             </div>
             <div className="flex justify-center">
-              {goal && <GoalRing goal={goal} onTap={() => setGoalInfo(true)} />}
+              {goal && <GoalRing goal={goal} compact={compact} onTap={() => setGoalInfo(true)} />}
             </div>
           </div>
         </div>
 
         <div className="flex gap-2 mb-4">
-          <MacroChip v={totals.p} goal={norma?.p} k="белки" />
-          <MacroChip v={totals.f} goal={norma?.f} k="жиры" />
-          <MacroChip v={totals.c} goal={norma?.c} k="углев." />
+          <MacroChip v={totals.p} goal={norma?.p} k="белки" compact={compact} />
+          <MacroChip v={totals.f} goal={norma?.f} k="жиры" compact={compact} />
+          <MacroChip v={totals.c} goal={norma?.c} k="углев." compact={compact} />
         </div>
 
         {(slots ?? []).map(slot => {
@@ -135,7 +139,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                 </button>
                 <div className="text-xs dd-num flex items-center" style={{ color: 'var(--mut)' }}>
                   {es.length
-                    ? <span className="dd-num font-bold" style={{ fontSize: 13.5, color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
+                    ? <span className="dd-num font-bold" style={{ fontSize: '0.84375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
                     : (marks ?? []).some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : 'ничего'}
                 </div>
               </div>
@@ -283,9 +287,9 @@ function SlotLine({ e }: { e: Entry }) {
     return () => { alive = false; };
   }, [e]);
   return (
-    <div className="flex justify-between items-baseline text-[0.8125rem] py-1" style={{ borderBottom: '1px solid var(--tr)' }}>
-      <span>{name}<span style={{ color: 'var(--mut)' }}> · {fmt(e.grams)} г</span></span>
-      <span className="dd-num text-[0.71875rem]" style={{ color: 'var(--mut)' }}>{fmt(e.snapshot.kcal)}</span>
+    <div className="flex justify-between items-baseline gap-2 text-[0.8125rem] py-1" style={{ borderBottom: '1px solid var(--tr)' }}>
+      <span className="flex-1 min-w-0 truncate">{name}<span style={{ color: 'var(--mut)' }}> · {fmt(e.grams)} г</span></span>
+      <span className="dd-num flex-none text-[0.9375rem] font-semibold" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
     </div>
   );
 }
@@ -317,7 +321,7 @@ function MacroRing({ p, f, c, cap, children }: { p: number; f: number; c: number
 }
 
 /** Кольцо цели (реформа v0.5.0): прогресс = тренд/план без обрезки; ×N для кратных перевыполнений */
-function GoalRing({ goal, onTap }: { goal: GoalProgress; onTap: () => void }) {
+function GoalRing({ goal, compact, onTap }: { goal: GoalProgress; compact?: boolean; onTap: () => void }) {
   const R = 43; const size = 96; const sw = 10;
   const color = goal.pct < 50 ? 'var(--warn)' : goal.pct < 80 ? 'var(--acc)' : 'var(--ok)';
   const circ = 2 * Math.PI * R;
@@ -334,7 +338,7 @@ function GoalRing({ goal, onTap }: { goal: GoalProgress; onTap: () => void }) {
       </svg>
       <div className="dd-ring-val">
         <div className="text-lg font-extrabold dd-num">{label}</div>
-        <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>план</div>
+        {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>план</div>}
       </div>
     </button>
   );
@@ -356,7 +360,7 @@ function EntryLine({ e, slot, showTime, onClick }: { e: Entry; slot: Slot; showT
     let alive = true;
     (async () => {
       const f = e.kind === 'food' ? await db.foods.get(e.refId) : await db.recipes.get(e.refId);
-      if (alive) { setName(f?.name ?? '—'); setIsPc(e.kind === 'food' && (f as import('./db').Food | undefined)?.unit === 'pc'); }
+      if (alive) { setName(f?.name ?? '—'); setIsPc(f?.unit === 'pc'); }
     })();
     return () => { alive = false; };
   }, [e]);
@@ -366,12 +370,12 @@ function EntryLine({ e, slot, showTime, onClick }: { e: Entry; slot: Slot; showT
   const isSnack = slot.defaultTime === null;
   const showT = showTime === 'all' || isSnack;
   return (
-    <div className="flex justify-between items-baseline text-[0.84375rem] py-1 cursor-pointer" onClick={onClick}>
-      <span style={{ color: 'var(--mut)' }}>
+    <div className="flex justify-between items-baseline gap-2 text-[0.84375rem] py-1 cursor-pointer" onClick={onClick}>
+      <span className="flex-1 min-w-0 truncate" style={{ color: 'var(--mut)' }}>
         {showT && <span className="dd-num" style={{ color: 'var(--acc-fg)' }}>{e.timeEaten} · </span>}
         {name}{qtyLabel}
       </span>
-      <span className="dd-num text-[0.71875rem]" style={{ color: 'var(--mut)' }}>{fmt(e.snapshot.kcal)}</span>
+      <span className="dd-num flex-none text-[0.96875rem] font-semibold" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
     </div>
   );
 }

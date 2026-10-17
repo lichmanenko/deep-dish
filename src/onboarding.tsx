@@ -112,7 +112,7 @@ function GoalStep({ onDone, skip }: { onDone: () => void; skip: () => void }) {
 
         {norma ? (
           <div className="dd-card p-3 mt-3 text-center" style={{ background: 'var(--veil)' }}>
-            <div className="dd-num" style={{ color: 'var(--acc-fg)', fontWeight: 800, fontSize: 20 }}>{fmt(norma.kcal)} ккал</div>
+            <div className="dd-num" style={{ color: 'var(--acc-fg)', fontWeight: 800, fontSize: '1.25rem' }}>{fmt(norma.kcal)} ккал</div>
             <div className="text-[0.6875rem] mt-1 dd-num" style={{ color: 'var(--mut)' }}>
               расход ≈ {norma.tdee}{norma.adj !== 0 ? ` → ${norma.adj > 0 ? '+' : ''}${norma.adj} по темпу` : ' · без поправки'}
             </div>

@@ -5,12 +5,17 @@ import productsSeed from '../data/products_v2.json';
 
 export type FoodSource = 'system' | 'custom' | 'off' | 'fork' | 'mfp';
 
+/** типовая порция: подпись + размер (граммы для g-учёта, штуки для порционного) */
+export interface PortionPreset { label: string; amount: number }
+
 export interface Food {
   id: string; name: string; brand?: string; category: string;
   kcalPer100g: number; pPer100g: number; fPer100g: number; cPer100g: number;
   /** 'pc' — порционный продукт: КБЖУ указаны НА 1 ПОРЦИЮ (в per100-полях), ввод в штуках (дробно) */
   unit?: 'g' | 'pc';
   portionG?: number; portionLabel?: string; barcode?: string;
+  /** типовые порции для быстрого ввода (напр. S 180 / M 250 / L 350 у кофе) */
+  portions?: PortionPreset[];
   source: FoodSource; ownerId: string; isPublic: boolean; star?: boolean;
   /** служебный продукт (импорт MFP): в каталоге и поиске не показывается, записи отображаются */
   hidden?: boolean;
@@ -22,6 +27,10 @@ export interface RecipeItem { foodId: string; grams: number; }
 export interface Recipe {
   id: string; name: string; items: RecipeItem[]; yieldG: number;
   kcalPer100g: number; pPer100g: number; fPer100g: number; cPer100g: number;
+  /** 'pc' — рецептом пользуемся порциями: КБЖУ на 100 г хранятся как обычно, порция = portionG граммов готового */
+  unit?: 'g' | 'pc';
+  portionG?: number;
+  portions?: PortionPreset[];
   ownerId: string; isPublic: boolean; star?: boolean;
   createdAt: number; updatedAt: number; deletedAt: number | null;
 }
