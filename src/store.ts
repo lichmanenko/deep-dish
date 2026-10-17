@@ -1,6 +1,6 @@
 // Слой доступа к данным + расчёты нормы + трекер метрик
 import { bannerAction } from './banner';
-import { db, newId, LOCAL_USER, type Entry, type Food, type Profile, type Recipe, type Slot, type KbjuSnapshot, type DayNorma, type SlotMark } from './db';
+import { db, newId, LOCAL_USER, type Entry, type Food, type Profile, type Recipe, type Slot, type KbjuSnapshot, type DayNorma, type SlotMark, type PortionPreset } from './db';
 import { todayISO, nowHM, kbjuSuspicious, fmt, normE } from './lib';
 
 // ── Метрики ──
@@ -53,8 +53,15 @@ export async function deleteEntry(id: string) {
 
 // ── Продукты/рецепты ──
 export type CatalogItem =
-  | { kind: 'food'; id: string; name: string; sub: string; star: boolean; suspicious: boolean; per100: KbjuSnapshot; unit: 'g' | 'pc'; food: Food }
-  | { kind: 'recipe'; id: string; name: string; sub: string; star: boolean; suspicious: boolean; per100: KbjuSnapshot; unit: 'g'; recipe: Recipe };
+  | { kind: 'food'; id: string; name: string; sub: string; star: boolean; suspicious: boolean; per100: KbjuSnapshot; unit: 'g' | 'pc'; portions?: PortionPreset[]; food: Food }
+  | { kind: 'recipe'; id: string; name: string; sub: string; star: boolean; suspicious: boolean; per100: KbjuSnapshot; unit: 'g' | 'pc'; portions?: PortionPreset[]; recipe: Recipe };
+
+/** сохранить типовые порции позиции (карточка «⋯» → редактор порций) */
+export async function savePortions(kind: 'food' | 'recipe', id: string, portions: PortionPreset[]) {
+  const now = Date.now();
+  if (kind === 'food') await db.foods.update(id, { portions, updatedAt: now });
+  else await db.recipes.update(id, { portions, updatedAt: now });
+}
 
 export async function getCatalog(query: string): Promise<CatalogItem[]> {
   const q = query.trim().toLowerCase();
@@ -71,14 +78,22 @@ export async function getCatalog(query: string): Promise<CatalogItem[]> {
       star: !!f.star, unit: f.unit === 'pc' ? 'pc' : 'g',
       suspicious: kbjuSuspicious(f.kcalPer100g, f.pPer100g, f.fPer100g, f.cPer100g, f.name),
       per100: { kcal: f.kcalPer100g, p: f.pPer100g, f: f.fPer100g, c: f.cPer100g },
+      portions: f.portions,
       food: f,
     })),
-    ...recipes.map<CatalogItem>(r => ({
-      kind: 'recipe', id: r.id, name: r.name, sub: 'рецепт', star: !!r.star, unit: 'g',
-      suspicious: false,
-      per100: { kcal: r.kcalPer100g, p: r.pPer100g, f: r.fPer100g, c: r.cPer100g },
-      recipe: r,
-    })),
+    ...recipes.map<CatalogItem>(r => {
+      // pc-рецепт: per100 отдаём «на порцию» — карточка записи считает как для порционного продукта
+      const pcK = r.unit === 'pc' && r.portionG ? r.portionG / 100 : 1;
+      return {
+        kind: 'recipe' as const, id: r.id, name: r.name,
+        sub: r.unit === 'pc' ? 'рецепт · порционный' : 'рецепт', star: !!r.star,
+        unit: (r.unit === 'pc' ? 'pc' : 'g') as 'g' | 'pc',
+        suspicious: false,
+        per100: { kcal: r.kcalPer100g * pcK, p: r.pPer100g * pcK, f: r.fPer100g * pcK, c: r.cPer100g * pcK },
+        portions: r.portions,
+        recipe: r,
+      };
+    }),
   ];
   return items;
 }
@@ -117,7 +132,7 @@ export async function saveCustomFood(f: Omit<Food, 'id' | 'createdAt' | 'updated
   return food;
 }
 
-export async function saveRecipe(name: string, items: Array<{ foodId: string; grams: number }>, yieldG: number): Promise<Recipe> {
+export async function saveRecipe(name: string, items: Array<{ foodId: string; grams: number }>, yieldG: number, portionsCount = 0): Promise<Recipe> {
   const foods = await Promise.all(items.map(i => db.foods.get(i.foodId)));
   let kcal = 0, p = 0, f = 0, c = 0;
   items.forEach((it, i) => {
@@ -133,11 +148,12 @@ export async function saveRecipe(name: string, items: Array<{ foodId: string; gr
     pPer100g: Math.round(p / y * 1000) / 10,
     fPer100g: Math.round(f / y * 1000) / 10,
     cPer100g: Math.round(c / y * 1000) / 10,
+    ...(portionsCount >= 1 ? { unit: 'pc' as const, portionG: Math.round(y / portionsCount) } : {}),
     ownerId: LOCAL_USER, isPublic: true, star: false,
     createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null,
   };
   await db.recipes.add(recipe);
-  track('recipe_created', { items: items.length });
+  track('recipe_created', { items: items.length, unit: recipe.unit ?? 'g' });
   return recipe;
 }
 
