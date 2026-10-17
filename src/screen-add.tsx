@@ -572,7 +572,7 @@ function CreateFood({ open, initialName, onClose }: { open: boolean; initialName
       <div className="dd-field-label">Единица учёта</div>
       <div className="dd-seg">
         <button className={unit === 'g' ? 'on' : ''} onClick={() => setUnit('g')}>граммы</button>
-        <button className={unit === 'pc' ? 'on' : ''} onClick={() => setUnit('pc')}>порции (шт)</button>
+        <button className={unit === 'pc' ? 'on' : ''} onClick={() => { setUnit('pc'); setPortRows([]); }}>порции (шт)</button>
       </div>
       {unit === 'g' && (
         <button className="dd-action mt-2" onClick={() => setPortsOpen(true)}>

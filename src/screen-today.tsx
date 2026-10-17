@@ -279,14 +279,21 @@ function profile0(macroPct?: { p: number; f: number; c: number }) { return macro
 
 function SlotLine({ e }: { e: Entry }) {
   const [name, setName] = useState('');
+  const [isPc, setIsPc] = useState(false);
   useEffect(() => {
     let alive = true;
-    (async () => { const f = e.kind === 'food' ? await db.foods.get(e.refId) : await db.recipes.get(e.refId); if (alive) setName(f?.name ?? '—'); })();
+    (async () => {
+      const f = e.kind === 'food' ? await db.foods.get(e.refId) : await db.recipes.get(e.refId);
+      if (alive) { setName(f?.name ?? '—'); setIsPc(f?.unit === 'pc'); }
+    })();
     return () => { alive = false; };
   }, [e]);
   return (
     <div className="flex justify-between items-baseline gap-2 text-[0.8125rem] py-1" style={{ borderBottom: '1px solid var(--tr)' }}>
-      <span className="flex-1 min-w-0 truncate">{name}<span style={{ color: 'var(--mut)' }}> · {fmt(e.grams)} г</span></span>
+      <span className="flex-1 min-w-0 truncate">{name}</span>
+      <span className="flex-none" style={{ color: 'var(--mut)' }}>
+        {isPc ? `${(Math.round((e.grams / 100) * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} шт` : `${fmt(e.grams)} г`}
+      </span>
       <span className="dd-num flex-none text-[0.875rem]" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
     </div>
   );
