@@ -306,6 +306,10 @@ def off_search(q: str, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
 CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'  # без похожих 0/O/1/I
 
 
+def deleted_flag(r: sqlite3.Row) -> bool:
+    return bool(r['deleted'])
+
+
 def auth_code(code: str) -> sqlite3.Row:
     code = (code or '').strip().upper()
     if not code:
@@ -357,19 +361,22 @@ def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]
                                'weightKg': round(it.kg, 2), 'bodyFatPct': None,
                                'createdAt': now, 'updatedAt': now, 'deletedAt': None},
                               ensure_ascii=False)
+            # Е1(ревью-2): повторная посылка воскрешает запись (deleted = 0)
             c.execute("INSERT INTO items (kind, id, owner, updated, deleted, body) "
                       "VALUES ('weightLogs', ?, ?, ?, 0, ?) "
-                      "ON CONFLICT(kind, id) DO UPDATE SET updated = excluded.updated, body = excluded.body",
+                      "ON CONFLICT(kind, id) DO UPDATE SET updated = excluded.updated, deleted = 0, body = excluded.body",
                       (iid, u['userId'], now, body))
-            # дедуп: ручная запись веса того же дня уходит в tombstone (мост — источник истины)
-            for r in c.execute("SELECT id, body FROM items WHERE kind = 'weightLogs' AND owner = ? AND deleted = 0",
-                               (u['userId'],)).fetchall():
-                if r['id'] == iid:
-                    continue
-                b = json.loads(r['body'])
-                if b.get('date') == it.date:
-                    c.execute('UPDATE items SET deleted = ? WHERE kind = ? AND id = ?', (now, 'weightLogs', r['id']))
             applied += 1
+        # Е6(ревью-2): дедуп одним проходом — ручные записи пришедших дат уходят в tombstone
+        dates = {it.date for it in items
+                 if _re.match(r'^\d{4}-\d{2}-\d{2}$', it.date) and 25 <= it.kg <= 350}
+        own = {'hw-' + u['userId'] + '-' + d for d in dates}
+        for r in c.execute("SELECT id, body FROM items WHERE kind = 'weightLogs' AND owner = ? AND deleted = 0",
+                           (u['userId'],)).fetchall():
+            if r['id'] in own:
+                continue  # сами мостовые записи этой пачки
+            if json.loads(r['body']).get('date') in dates:
+                c.execute('UPDATE items SET deleted = ? WHERE kind = ? AND id = ?', (now, 'weightLogs', r['id']))
     return {'ok': True, 'applied': applied}
 
 
@@ -448,7 +455,7 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
                 pass
 
         # 3) отдать изменения новее since: личное — только своё, каталог — живой общий
-        rows = c.execute('''SELECT kind, body, updated FROM items
+        rows = c.execute('''SELECT kind, body, updated, deleted FROM items
                             WHERE updated > ? AND kind != 'offcache' AND (owner = ? OR (kind IN ('foods','recipes') AND deleted = 0))
                             ORDER BY updated LIMIT 5000''',
                          (payload.since, uid)).fetchall()
@@ -457,6 +464,9 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
             body = json.loads(r['body'])
             if r['kind'] in PUBLIC_KINDS and not body.get('isPublic', True) and body.get('ownerId') != uid:
                 continue  # чужие черновики каталога не рассылаем
+            # Е1(ревью-2): серверная пометка deleted (мост-дедуп и т.п.) должна доезжать в теле
+            if deleted_flag(r) and not body.get('deletedAt'):
+                body['deletedAt'] = r['updated']
             out.append({'kind': r['kind'], 'body': body, 'updated': r['updated']})
 
         # 4) чистка старых tombstone (не чаще раза в час — по факту запроса, дёшево на SQLite)
