@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Deep Dish — шапка и производитель (варианты)</title>
+<style>
+  :root {
+    --bg:#F7F9FB; --bg2:#E7EDF3; --bg3:#DCE6EF; --panel:#F1F4F7;
+    --glass:rgba(255,255,255,.60); --tx:#1B2026; --mut:#8B929C;
+    --acc:#44748F; --acc2:#6E9BBB; --acc-fg:#3A647B; --tr:rgba(27,32,38,.07);
+  }
+  .dark {
+    --bg:#14171B; --bg2:#18202A; --bg3:#1E2A38; --panel:#1B222C;
+    --glass:rgba(255,255,255,.065); --tx:#E9EDF2; --mut:#A9AFBA;
+    --acc:#7FA8C9; --acc2:#AECBE2; --acc-fg:#9ABCD9; --tr:rgba(255,255,255,.09);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif; background:#E9EBEF; color:#1C1D20; padding:18px 12px 60px; display:flex; flex-direction:column; align-items:center; }
+  .intro { max-width:430px; width:100%; margin-bottom:12px; }
+  .intro h1 { font-size:22px; letter-spacing:-.02em; }
+  .intro p { font-size:13.5px; color:#4A4C52; margin-top:6px; line-height:1.5; }
+  .toolbar { max-width:430px; width:100%; display:flex; gap:8px; margin-bottom:18px; }
+  .tbtn { font:inherit; font-size:13px; font-weight:600; padding:10px 14px; border-radius:14px; border:none; background:#fff; color:#33363D; cursor:pointer; box-shadow:0 4px 12px rgba(20,22,28,.08); }
+  .tbtn.acc { background:#33434F; color:#E9EDF2; }
+
+  .frame { width:100%; max-width:430px; border-radius:34px; overflow:hidden; padding:18px 16px 20px; margin-bottom:26px;
+    background:linear-gradient(190deg,var(--bg) 0%,var(--bg2) 58%,var(--bg3) 100%); color:var(--tx); box-shadow:0 18px 44px rgba(15,18,26,.2); }
+  .cap { max-width:430px; width:100%; font-size:13px; font-weight:700; color:#5A5D66; margin:0 auto 8px; }
+
+  /* шапка вариантов */
+  .head-demo { display:flex; justify-content:space-between; align-items:center; padding:6px 2px 14px; }
+  .date-side { display:flex; align-items:center; gap:2px; }
+  .arrow { width:30px; height:38px; border-radius:10px; border:none; background:none; color:var(--acc-fg); font-size:24px; font-weight:800; line-height:1; display:flex; align-items:center; justify-content:center; opacity:.9; }
+  .date-label { font-size:18px; font-weight:750; letter-spacing:-.01em; padding:0 2px; }
+  .date-sub { font-size:11px; color:var(--mut); margin-top:1px; }
+  .brand { text-align:right; }
+
+  /* варианты написания */
+  .b1 { font-size:13px; font-weight:800; letter-spacing:.14em; }
+  .b2 { font-size:16px; font-weight:750; letter-spacing:-.01em; }
+  .b3 { font-size:15px; font-weight:700; }
+  .b4 { font-size:11.5px; font-weight:800; letter-spacing:.34em; }
+  .b5 { display:flex; align-items:center; gap:6px; justify-content:flex-end; }
+  .b5 svg { transform:rotate(-90deg); }
+  .b5 span { font-size:15px; font-weight:750; }
+  .b6a { font-size:14px; font-weight:750; }
+  .b6b { font-size:10px; color:var(--mut); margin-top:1px; }
+
+  /* карточки списков (варианты производителя) */
+  .item { display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%; padding:13px 14px; border-radius:20px; background:var(--glass); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); margin-bottom:6px; }
+  .item .nm { font-size:14.5px; font-weight:550; }
+  .item .sub { font-size:11.5px; color:var(--mut); margin-top:2px; }
+  .kc { font-size:12px; color:var(--mut); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .badge { display:inline-block; font-size:10px; font-weight:650; color:var(--acc-fg); background:var(--tr); border-radius:8px; padding:2px 7px; margin-left:7px; vertical-align:1px; }
+  .muted-inline { color:var(--mut); font-weight:450; }
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Шапка и производитель — варианты</h1>
+  <p>Шапка «Сегодня»: слева крупная дата со стрелками, справа — написание названия (6 вариантов). Ниже — 3 варианта показа производителя в списках. Переключи тему.</p>
+</div>
+<div class="toolbar">
+  <button class="tbtn acc" id="td">🌙 тёмная</button>
+  <button class="tbtn" id="tl">☀️ светлая</button>
+</div>
+
+<div id="root"></div>
+
+<template id="tplHead">
+  <div class="head-demo">
+    <div class="date-side">
+      <button class="arrow">‹</button>
+      <div>
+        <div class="date-label">Сегодня</div>
+        <div class="date-sub">вс, 5 октября</div>
+      </div>
+      <button class="arrow">›</button>
+    </div>
+    <div class="brand"></div>
+  </div>
+  <div class="item" style="margin-top:6px">
+    <div><div class="nm">🥐 Завтрак</div><div class="sub">460 ккал · 2 записи</div></div>
+    <div class="kc">08:10</div>
+  </div>
+</template>
+
+<script>
+const BRANDS = [
+  { id:1, name:'DEEP DISH', cls:'b1' },
+  { id:2, name:'deep dish', cls:'b2' },
+  { id:3, name:'Deep Dish', cls:'b3' },
+  { id:4, name:'DEEP DISH', cls:'b4' },
+  { id:5, ring:true, name:'deep dish', cls:'b5' },
+  { id:6, two:true, name:'Deep Dish', cls:'b6' },
+];
+
+const MFR = [
+  { id:'А', name:'Двумя строками', desc:'производитель мелко под названием' },
+  { id:'Б', name:'В строку', desc:'«Название — производитель», производитель приглушён' },
+  { id:'В', name:'Бейдж', desc:'компактный чип справа от названия' },
+];
+
+const root = document.getElementById('root');
+const tpl = document.getElementById('tplHead');
+
+for (const b of BRANDS) {
+  const cap = document.createElement('div'); cap.className='cap';
+  cap.textContent = `Вариант ${b.id} — ${b.id===5?'строчные + кольцо':b.id===6?'название + подпись экрана':b.name}`;
+  const frame = document.createElement('div'); frame.className='frame brand-frame';
+  const node = tpl.content.cloneNode(true);
+  const brand = node.querySelector('.brand');
+  if (b.ring) {
+    brand.innerHTML = `<svg width="20" height="20" viewBox="0 0 96 96"><defs><linearGradient id="g${b.id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc2)"/></linearGradient></defs><circle cx="48" cy="48" r="38" fill="none" stroke="var(--tr)" stroke-width="12"/><circle cx="48" cy="48" r="38" fill="none" stroke="url(#g${b.id})" stroke-width="12" stroke-linecap="round" stroke-dasharray="172 239"/></svg><span class="b5t">${b.name}</span>`;
+    brand.className = 'brand b5';
+  } else if (b.two) {
+    brand.innerHTML = `<div class="b6a">${b.name}</div><div class="b6b">дневник питания</div>`;
+  } else {
+    brand.innerHTML = `<div class="${b.cls}">${b.name}</div>`;
+    if (b.id === 1 || b.id === 4) brand.innerHTML += `<div style="font-size:9px;color:var(--mut);margin-top:2px;letter-spacing:.2em">ДНЕВНИК</div>`;
+  }
+  frame.appendChild(node);
+  root.appendChild(cap); root.appendChild(frame);
+}
+
+// Производитель
+for (const m of MFR) {
+  const cap = document.createElement('div'); cap.className='cap';
+  cap.textContent = `Вариант ${m.id} — ${m.name} (${m.desc})`;
+  const frame = document.createElement('div'); frame.className='frame mfr-frame';
+  const rows = [
+    { n:'Протеин сывороточный', m:'Optimum Nutrition', k:'116/24/8', s:'Спортивное питание · 375 ккал/100 г' },
+    { n:'Кофе латте', m:'кофейня у работы', k:'7/6/12', s:'Свои продукты · порционный · 145 ккал/порц.' },
+    { n:'Творог 9%', m:'Простоквашино', k:'18/9/3', s:'Молочные · 185 ккал/100 г' },
+  ];
+  for (const r of rows) {
+    const item = document.createElement('div'); item.className='item';
+    let nmHtml;
+    if (m.id === 'А') nmHtml = `<div><div class="nm">${r.n}</div><div class="sub" style="margin-top:1px">${r.m}</div><div class="sub">${r.s}</div></div>`;
+    if (m.id === 'Б') nmHtml = `<div><div class="nm">${r.n} <span class="muted-inline">— ${r.m}</span></div><div class="sub">${r.s}</div></div>`;
+    if (m.id === 'В') nmHtml = `<div><div class="nm">${r.n}<span class="badge">${r.m}</span></div><div class="sub">${r.s}</div></div>`;
+    item.innerHTML = `${nmHtml}<div class="kc">${r.k}</div>`;
+    frame.appendChild(item);
+  }
+  root.appendChild(cap); root.appendChild(frame);
+}
+
+// тема
+const frames = () => document.querySelectorAll('.frame');
+document.getElementById('td').onclick = () => { frames().forEach(f => { f.classList.add('dark'); f.classList.remove('light'); }); seg(true); };
+document.getElementById('tl').onclick = () => { frames().forEach(f => { f.classList.add('light'); f.classList.remove('dark'); }); seg(false); };
+function seg(dark) {
+  document.getElementById('td').classList.toggle('acc', dark);
+  document.getElementById('tl').classList.toggle('acc', !dark);
+}
+document.getElementById('td').click();
+</script>
+</body>
+</html>

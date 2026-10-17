@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Deep Dish — макеты экранов (интерактив)</title>
+<style>
+  :root {
+    --bg: #F7F9FB; --bg2: #E7EDF3; --bg3: #DCE6EF;
+    --glass: rgba(255,255,255,.60); --glass-strong: rgba(255,255,255,.78);
+    --tx: #1B2026; --mut: #8B929C;
+    --acc: #44748F; --acc2: #6E9BBB; --acc-fg: #3A647B;
+    --veil: rgba(68,116,143,.10); --tr: rgba(27,32,38,.07);
+    --ok: #3F9B6C; --warn: #C0523C;
+  }
+  .dark {
+    --bg: #14171B; --bg2: #18202A; --bg3: #1E2A38;
+    --glass: rgba(255,255,255,.065); --glass-strong: rgba(255,255,255,.10);
+    --tx: #E9EDF2; --mut: #969DAA;
+    --acc: #7FA8C9; --acc2: #AECBE2; --acc-fg: #9ABCD9;
+    --veil: rgba(127,168,201,.12); --tr: rgba(255,255,255,.09);
+    --ok: #6FC79A; --warn: #E0836B;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    background: #E9EBEF; color: #1C1D20; padding: 18px 12px 70px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .toolbar { width: 100%; max-width: 430px; display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar .sp { flex: 1; }
+  .tbtn {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 9px 13px; border-radius: 14px; border: none;
+    background: #fff; color: #33363D; box-shadow: 0 4px 12px rgba(20,22,28,.08); cursor: pointer;
+  }
+  .tbtn.acc { background: #33434F; color: #E9EDF2; }
+  .hint { max-width: 430px; width: 100%; font-size: 12.5px; line-height: 1.5; color: #5A5D66; margin-bottom: 14px; }
+  .hint b { color: #1C1D20; }
+  /* Фрейм телефона */
+  .frame {
+    position: relative; width: 100%; max-width: 430px; border-radius: 34px; overflow: hidden;
+    background: linear-gradient(190deg, var(--bg) 0%, var(--bg2) 58%, var(--bg3) 100%);
+    color: var(--tx); min-height: 780px; display: flex; flex-direction: column;
+    box-shadow: 0 20px 50px rgba(15,18,26,.20);
+  }
+  .screen { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  .screen.on { display: flex; }
+  .content { flex: 1; overflow-y: auto; padding: 18px 16px 26px; }
+  /* Баннер top-sheet */
+  .banner {
+    position: absolute; top: 8px; left: 10px; right: 10px; z-index: 40;
+    border-radius: 20px; padding: 13px 40px 13px 15px;
+    background: var(--glass-strong); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    box-shadow: 0 12px 30px rgba(10,14,20,.16);
+    display: flex; gap: 11px; align-items: flex-start;
+    transform: translateY(-130%); transition: transform .45s cubic-bezier(.22,1,.36,1);
+    font-size: 13.5px; line-height: 1.45;
+  }
+  .banner.show { transform: translateY(0); }
+  .banner::before {
+    content: ""; position: absolute; top: 0; left: 18px; right: 18px; height: 3px; border-radius: 0 0 4px 4px;
+    background: linear-gradient(90deg, var(--acc), var(--acc2));
+  }
+  .banner.good::before { background: linear-gradient(90deg, var(--ok), var(--acc2)); }
+  .banner.bad::before { background: linear-gradient(90deg, var(--warn), #E0A08F); }
+  .banner .em { font-size: 20px; line-height: 1; margin-top: 1px; }
+  .banner .x {
+    position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 9px; border: none;
+    background: var(--veil); color: var(--mut); font-size: 14px; cursor: pointer;
+  }
+  .banner.good b { color: var(--ok); } .banner.bad b { color: var(--warn); }
+  .banner .sub { color: var(--mut); font-size: 11.5px; margin-top: 3px; }
+  /* Заголовок дня */
+  .row1 { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 2px 16px; }
+  .row1 .h { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+  .row1 .d { font-size: 13px; color: var(--mut); }
+  /* Кольцо */
+  .ring-wrap {
+    display: flex; align-items: center; gap: 18px; padding: 18px 16px; border-radius: 26px;
+    background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); margin-bottom: 12px;
+  }
+  .ring { position: relative; width: 96px; height: 96px; flex: none; }
+  .ring svg { transform: rotate(-90deg); }
+  .ring .val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ring .val .n { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .ring .val .u { font-size: 10px; color: var(--mut); }
+  .kcal-info .big { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kcal-info .sub { font-size: 12px; color: var(--mut); margin-top: 3px; }
+  .chips { display: flex; gap: 9px; margin-bottom: 18px; }
+  .chip { flex: 1; text-align: center; padding: 11px 4px; border-radius: 19px; background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+  .chip .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chip .k { font-size: 11px; color: var(--mut); margin-top: 1px; }
+  /* Слоты */
+  .slot { padding: 15px 16px 12px; border-radius: 24px; background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); margin-bottom: 8px; }
+  .slot .hd { display: flex; justify-content: space-between; align-items: baseline; }
+  .slot .nm { font-size: 15px; font-weight: 650; display: flex; gap: 9px; align-items: baseline; }
+  .slot .nm .em { font-size: 16px; }
+  .slot .kc { font-size: 12.5px; color: var(--mut); font-variant-numeric: tabular-nums; }
+  .it { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--mut); padding: 6px 0 0 25px; font-variant-numeric: tabular-nums; }
+  .it span:last-child { color: var(--tx); font-weight: 550; }
+  .addfood {
+    margin-top: 14px; width: 100%; padding: 15px; border-radius: 22px; border: none;
+    background: linear-gradient(135deg, rgba(68,116,143,.16), rgba(110,155,187,.08)); color: var(--acc-fg); font: inherit; font-size: 15px; font-weight: 650; cursor: pointer;
+  }
+  /* Таб-бар */
+  .tabbar {
+    display: flex; padding: 10px 12px calc(14px + env(safe-area-inset-bottom)); gap: 4px;
+  }
+  .tab {
+    flex: 1; text-align: center; padding: 8px 4px; border-radius: 16px; font-size: 11px; color: var(--mut);
+    background: transparent; border: none; font-weight: 600; cursor: pointer;
+  }
+  .tab .ti { font-size: 20px; display: block; margin-bottom: 2px; opacity: .85; }
+  .tab.on { background: var(--glass); color: var(--acc-fg); }
+  /* Bottom sheet */
+  .sheet-bg {
+    position: absolute; inset: 0; z-index: 50; background: rgba(8,10,14,.34); opacity: 0; pointer-events: none; transition: opacity .3s;
+  }
+  .sheet-bg.show { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 51; border-radius: 30px 30px 0 0;
+    background: var(--glass-strong); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+    padding: 14px 16px calc(20px + env(safe-area-inset-bottom)); transform: translateY(105%); transition: transform .4s cubic-bezier(.22,1,.36,1);
+  }
+  .sheet.show { transform: translateY(0); }
+  .sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--tr); margin: 0 auto 14px; }
+  .sheet h3 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .sheet .note { font-size: 12px; color: var(--mut); margin-bottom: 14px; line-height: 1.45; }
+  .sl { display: flex; justify-content: space-between; align-items: center; padding: 14px 15px; border-radius: 20px; background: var(--veil); margin-bottom: 8px; border: none; width: 100%; font: inherit; color: var(--tx); cursor: pointer; text-align: left; }
+  .sl .t { font-size: 14.5px; font-weight: 650; }
+  .sl .auto { font-size: 11.5px; color: var(--mut); margin-top: 2px; }
+  .sl.ask { background: var(--glass); }
+  .timebox { display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-radius: 20px; background: var(--glass); margin-top: 10px; }
+  .timebox input[type=time] { font: inherit; font-size: 17px; font-weight: 650; color: var(--tx); background: transparent; border: none; }
+  /* Онбординг */
+  .onb { display: flex; flex-direction: column; flex: 1; padding: 24px 20px 20px; }
+  .dots { display: flex; gap: 7px; justify-content: center; margin: 8px 0 26px; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--tr); }
+  .dots i.on { background: var(--acc); }
+  .onb .big-em { font-size: 54px; text-align: center; margin: 18px 0 22px; }
+  .onb h2 { font-size: 25px; font-weight: 750; letter-spacing: -.015em; text-align: center; }
+  .onb p { font-size: 14.5px; color: var(--mut); text-align: center; line-height: 1.55; margin-top: 10px; }
+  .onb .card { border-radius: 24px; background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); padding: 16px 18px; margin-top: 18px; }
+  .onb .row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; font-size: 14.5px; }
+  .onb .row + .row { border-top: none; }
+  .onb .row .lab { color: var(--mut); }
+  .seg { display: flex; gap: 6px; }
+  .seg button { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 13px; border-radius: 14px; border: none; background: var(--veil); color: var(--mut); cursor: pointer; }
+  .seg button.on { background: var(--acc); color: #fff; }
+  .dark .seg button.on { color: #101B24; }
+  .onb .spacer { flex: 1; }
+  .onb .nav { display: flex; gap: 10px; }
+  .onb .skip { padding: 15px 18px; border-radius: 22px; border: none; background: transparent; color: var(--mut); font: inherit; font-weight: 600; cursor: pointer; }
+  .onb .next { flex: 1; padding: 15px; border-radius: 22px; border: none; background: var(--veil); color: var(--acc-fg); font: inherit; font-size: 15.5px; font-weight: 700; cursor: pointer; }
+  /* Настройки */
+  .st-h { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--mut); margin: 20px 4px 10px; }
+  .st-card { border-radius: 24px; background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); padding: 4px 16px; }
+  .st-row { display: flex; justify-content: space-between; align-items: center; padding: 13px 0; }
+  .st-row + .st-row { box-shadow: 0 1px 0 var(--tr); }
+  .st-row .lab { font-size: 14.5px; font-weight: 550; }
+  .st-row .lab .sub { display: block; font-size: 11.5px; color: var(--mut); margin-top: 2px; font-weight: 400; }
+  .st-row input[type=time] { font: inherit; font-size: 16px; font-weight: 650; color: var(--acc-fg); background: transparent; border: none; }
+  .sw { position: relative; width: 46px; height: 28px; border-radius: 15px; background: var(--tr); border: none; cursor: pointer; transition: background .25s; flex: none; }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.18); transition: transform .25s; }
+  .sw.on { background: var(--acc); } .sw.on::after { transform: translateX(18px); }
+  .flag { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: 16px; background: var(--veil); color: var(--acc-fg); font-size: 13.5px; font-weight: 600; margin: 0 8px 8px 0; border: none; font-family: inherit; cursor: pointer; }
+  .flag.off { background: var(--tr); color: var(--mut); }
+  .debug { max-width: 430px; width: 100%; margin-top: 12px; font-size: 11.5px; color: #787B82; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <button class="tbtn" id="scr-today">Сегодня</button>
+    <button class="tbtn" id="scr-onb">Онбординг</button>
+    <button class="tbtn" id="scr-set">Настройки</button>
+    <span class="sp"></span>
+    <button class="tbtn acc" id="theme">🌙 тема</button>
+  </div>
+  <div class="toolbar">
+    <button class="tbtn" id="showA">💪 Баннер «так держать»</button>
+    <button class="tbtn" id="showB">🍷 Баннер «окно срыва»</button>
+  </div>
+  <div class="hint">
+    <b>Интерактивные макеты</b> в гамме Графит·сталь: тапай «+ Добавить еду» (время для перекуса), закрывай баннеры крестиком — после <b>3 действий</b> баннер исчезает сам. Тема и все элементы — реальные токены приложения.
+  </div>
+
+  <div class="frame light" id="frame">
+    <!-- Баннеры -->
+    <div class="banner good" id="bannerA">
+      <span class="em">💪</span>
+      <div><b>Так держать!</b> Такими темпами через <b>8 недель</b> — <b>78 кг</b>.<div class="sub">тренд −0,45 кг/нед · идём быстрее плана</div></div>
+      <button class="x" data-close>✕</button>
+    </div>
+    <div class="banner bad" id="bannerB">
+      <span class="em">🍷</span>
+      <div><b>78 кг сами к тебе не придут</b> — нужно немного потерпеть.<div class="sub">обычно в это время (21:00–23:00) бывает лишнее</div></div>
+      <button class="x" data-close>✕</button>
+    </div>
+
+    <!-- ЭКРАН: СЕГОДНЯ -->
+    <section class="screen on" id="s-today">
+      <div class="content">
+        <div class="row1"><div class="h">Сегодня</div><div class="d">сб, 4 окт</div></div>
+        <div class="ring-wrap">
+          <div class="ring">
+            <svg width="96" height="96" viewBox="0 0 96 96">
+              <defs><linearGradient id="rg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc2)"/></linearGradient></defs>
+              <circle cx="48" cy="48" r="38" fill="none" stroke="var(--tr)" stroke-width="10"/>
+              <circle cx="48" cy="48" r="38" fill="none" stroke="url(#rg1)" stroke-width="10" stroke-linecap="round" stroke-dasharray="172.2 238.8"/>
+            </svg>
+            <div class="val"><div class="n">72%</div><div class="u">нормы</div></div>
+          </div>
+          <div class="kcal-info">
+            <div class="big">1 740 ккал</div>
+            <div class="sub">из 2 410 · осталось 670</div>
+          </div>
+        </div>
+        <div class="chips">
+          <div class="chip"><div class="v">132 г</div><div class="k">белки</div></div>
+          <div class="chip"><div class="v">78 г</div><div class="k">жиры</div></div>
+          <div class="chip"><div class="v">210 г</div><div class="k">углеводы</div></div>
+        </div>
+        <div class="slot">
+          <div class="hd"><div class="nm"><span class="em">🥐</span>Завтрак</div><div class="kc">460 ккал · 08:00</div></div>
+          <div class="it"><span>Овсянка на воде · 250 г</span><span>220</span></div>
+          <div class="it"><span>Банан · 1 шт</span><span>105</span></div>
+          <div class="it"><span>Кофе с молоком · 200 мл</span><span>135</span></div>
+        </div>
+        <div class="slot">
+          <div class="hd"><div class="nm"><span class="em">🍲</span>Обед</div><div class="kc">680 ккал · 13:00</div></div>
+          <div class="it"><span>Куриная грудка · 180 г</span><span>297</span></div>
+          <div class="it"><span>Гречка варёная · 150 г</span><span>198</span></div>
+        </div>
+        <div class="slot">
+          <div class="hd"><div class="nm"><span class="em">🌙</span>Ужин</div><div class="kc">ещё ничего</div></div>
+        </div>
+        <div class="slot">
+          <div class="hd"><div class="nm"><span class="em">🍎</span>Перекус</div><div class="kc">600 ккал · 16:40</div></div>
+          <div class="it"><span>Протеиновый батончик · 1 шт</span><span>180</span></div>
+          <div class="it"><span>Творог 5% · 200 г</span><span>242</span></div>
+        </div>
+        <button class="addfood" id="addFood">+ Добавить еду</button>
+      </div>
+      <div class="tabbar">
+        <button class="tab on"><span class="ti">◍</span>Сегодня</button>
+        <button class="tab"><span class="ti">◫</span>История</button>
+        <button class="tab"><span class="ti">◔</span>Профиль</button>
+      </div>
+    </section>
+
+    <!-- ЭКРАН: ОНБОРДИНГ -->
+    <section class="screen" id="s-onb">
+      <div class="onb" id="onb">
+        <div class="dots" id="onb-dots"><i class="on"></i><i></i><i></i><i></i></div>
+        <div id="onb-body"></div>
+        <div class="spacer"></div>
+        <div class="nav">
+          <button class="skip" id="onb-skip">Пропустить</button>
+          <button class="next" id="onb-next">Далее</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ЭКРАН: НАСТРОЙКИ -->
+    <section class="screen" id="s-set">
+      <div class="content">
+        <div class="row1"><div class="h">Настройки</div><div class="d">профиль · В.</div></div>
+
+        <div class="st-h">Времена приёмов пищи</div>
+        <div class="st-card">
+          <div class="st-row"><div class="lab">🥐 Завтрак<span class="sub">подставляется автоматически</span></div><input type="time" value="08:00"></div>
+          <div class="st-row"><div class="lab">🍲 Обед<span class="sub">подставляется автоматически</span></div><input type="time" value="13:00"></div>
+          <div class="st-row"><div class="lab">🌙 Ужин<span class="sub">подставляется автоматически</span></div><input type="time" value="19:00"></div>
+          <div class="st-row"><div class="lab">🍎 Перекус<span class="sub">время спрашивается при вводе</span></div><div class="lab" style="color:var(--acc-fg)">спрашивать</div></div>
+        </div>
+
+        <div class="st-h">Мотивация</div>
+        <div class="st-card">
+          <div class="st-row"><div class="lab">💪 «Так держать»<span class="sub">утром, если идём по плану или быстрее</span></div><button class="sw on" data-tgl></button></div>
+          <div class="st-row"><div class="lab">🛡 Предостережения<span class="sub">в окнах, когда обычно бывает лишнее</span></div><button class="sw on" data-tgl></button></div>
+        </div>
+
+        <div class="st-h">Красные флаги (что считать «угощением»)</div>
+        <div class="st-card" style="padding:16px">
+          <button class="flag" data-flag>🍫 Сладкое</button>
+          <button class="flag" data-flag>🍔 Фастфуд</button>
+          <button class="flag" data-flag>🍟 Снеки</button>
+          <button class="flag" data-flag>🍷 Алкоголь</button>
+          <button class="flag off" data-flag>+ своя категория</button>
+        </div>
+        <div class="st-h">Данные</div>
+        <div class="st-card">
+          <div class="st-row"><div class="lab">Экспорт JSON<span class="sub">полный бэкап одной кнопкой</span></div><div class="lab" style="color:var(--acc-fg)">→</div></div>
+          <div class="st-row"><div class="lab">Экспорт CSV<span class="sub">еда и вес для Excel</span></div><div class="lab" style="color:var(--acc-fg)">→</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom sheet: добавление -->
+    <div class="sheet-bg" id="sheetBg"></div>
+    <div class="sheet" id="sheet">
+      <div class="grab"></div>
+      <h3>Куда записать?</h3>
+      <div class="note">Время завтрака, обеда и ужина подставится из настроек — его не спрашиваем.</div>
+      <button class="sl" data-slot="Завтрак"><div><div class="t">🥐 Завтрак</div><div class="auto">время из настроек · 08:00</div></div><div>→</div></button>
+      <button class="sl" data-slot="Обед"><div><div class="t">🍲 Обед</div><div class="auto">время из настроек · 13:00</div></div><div>→</div></button>
+      <button class="sl" data-slot="Ужин"><div><div class="t">🌙 Ужин</div><div class="auto">время из настроек · 19:00</div></div><div>→</div></button>
+      <button class="sl ask" id="snackBtn"><div><div class="t">🍎 Перекус</div><div class="auto">укажем время вручную</div></div><div>→</div></button>
+      <div class="timebox" id="snackTime" style="display:none">
+        <span style="font-size:13.5px;color:var(--mut)">Время перекуса</span>
+        <input type="time" value="16:40">
+      </div>
+    </div>
+  </div>
+
+  <div class="debug" id="debug">баннер исчезнет сам после 3 действий · действий: 0</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const frame = $('#frame');
+
+// Экраны
+const screens = { today: $('#s-today'), onb: $('#s-onb'), set: $('#s-set') };
+function showScr(k) {
+  for (const key in screens) screens[key].classList.toggle('on', key === k);
+}
+$('#scr-today').onclick = () => showScr('today');
+$('#scr-onb').onclick = () => showScr('onb');
+$('#scr-set').onclick = () => showScr('set');
+
+// Тема
+$('#theme').onclick = () => {
+  const dark = frame.classList.toggle('dark');
+  frame.classList.toggle('light', !dark);
+  $('#theme').textContent = dark ? '☀️ тема' : '🌙 тема';
+};
+
+// Баннеры: показ, закрытие, авто-скрытие после 3 действий
+const banners = { A: $('#bannerA'), B: $('#bannerB') };
+let acts = 0, hideAfter = 3;
+function updDebug() { $('#debug').textContent = `баннер исчезнет сам после ${hideAfter} действий · действий: ${acts}`; }
+function showBanner(k) {
+  banners[k === 'A' ? 'B' : 'A'].classList.remove('show');
+  banners[k].classList.add('show');
+  acts = 0; updDebug();
+}
+$('#showA').onclick = () => showBanner('A');
+$('#showB').onclick = () => showBanner('B');
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = e => {
+  e.target.closest('.banner').classList.remove('show');
+});
+frame.addEventListener('click', e => {
+  if (e.target.closest('.banner')) return;
+  const anyShown = banners.A.classList.contains('show') || banners.B.classList.contains('show');
+  if (!anyShown) return;
+  acts++; updDebug();
+  if (acts >= hideAfter) { banners.A.classList.remove('show'); banners.B.classList.remove('show'); }
+});
+
+// Bottom sheet
+const sheet = $('#sheet'), bg = $('#sheetBg');
+function openSheet() { sheet.classList.add('show'); bg.classList.add('show'); }
+function closeSheet() { sheet.classList.remove('show'); bg.classList.remove('show'); $('#snackTime').style.display = 'none'; }
+$('#addFood').onclick = openSheet;
+bg.onclick = closeSheet;
+$('#snackBtn').onclick = () => { $('#snackTime').style.display = $('#snackTime').style.display === 'none' ? 'flex' : 'none'; };
+document.querySelectorAll('.sl[data-slot]').forEach(b => b.onclick = closeSheet);
+
+// Тумблеры и флаги
+document.querySelectorAll('[data-tgl]').forEach(t => t.onclick = () => t.classList.toggle('on'));
+document.querySelectorAll('[data-flag]').forEach(f => f.onclick = () => {
+  if (f.classList.contains('off')) { f.textContent = f.textContent.replace('+ ', ''); }
+  f.classList.toggle('off');
+});
+
+// Онбординг
+const ONB = [
+  { em: '🍽', h: 'Добро пожаловать в Deep Dish', p: 'Дневник питания и веса для всей семьи. Главный принцип — запись еды за пару секунд, всё остальное приложение берёт на себя.' },
+  { em: '⚡️', h: 'Как вносить еду', p: 'Ищите продукт по названию, штрихкод привезёт КБЖУ из открытой базы. Частое — в «недавних». Вчерашний день копируется целиком.' },
+  { em: '🎯', h: 'Цель — по желанию', p: 'Можно просто вести дневник. А можно задать цель — тогда появится динамика веса, умная норма и поддержка.', card: 'goal' },
+  { em: '📲', h: 'Добавьте на экран «Домой»', p: 'Поделиться → «На экран Домой». После этого приложение работает полностью без интернета.' },
+];
+let onbStep = 0;
+function renderOnb() {
+  const s = ONB[onbStep];
+  let card = '';
+  if (s.card === 'goal') {
+    card = `<div class="card">
+      <div class="row"><span class="lab">Режим</span><span class="seg"><button class="on">С целью</button><button>Без цели</button></span></div>
+      <div class="row"><span class="lab">Цель</span><span class="seg"><button class="on">−0,5 кг/нед</button><button>−0,25</button></span></div>
+      <div class="row"><span class="lab">Целевой вес</span><span style="font-weight:650">78 кг</span></div>
+      <div class="row"><span class="lab">Норма (старт)</span><span style="font-weight:650">2 410 ккал</span></div>
+    </div>`;
+  }
+  $('#onb-body').innerHTML = `<div class="big-em">${s.em}</div><h2>${s.h}</h2><p>${s.p}</p>${card}`;
+  [...$('#onb-dots').children].forEach((d, i) => d.classList.toggle('on', i === onbStep));
+  $('#onb-next').textContent = onbStep === ONB.length - 1 ? 'Начать' : 'Далее';
+}
+$('#onb-next').onclick = () => { onbStep = Math.min(onbStep + 1, ONB.length - 1); renderOnb(); };
+$('#onb-skip').onclick = () => { onbStep = ONB.length - 1; renderOnb(); showScr('today'); };
+renderOnb();
+updDebug();
+</script>
+</body>
+</html>
