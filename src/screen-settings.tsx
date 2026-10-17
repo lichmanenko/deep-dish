@@ -49,6 +49,10 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
             </button>
           ))}
         </div>
+        <div className="dd-field-label">Размер текста</div>
+        <Segmented value={String(settings.textScale ?? 1)} onChange={v => setSettings({ ...settings, textScale: parseFloat(v) })} options={[
+          { value: '1', label: 'обычный' }, { value: '1.15', label: 'крупный' }, { value: '1.3', label: 'очень крупный' },
+        ]} />
         <div className="dd-field-label">Тема</div>
         <Segmented value={settings.theme} onChange={v => setSettings({ ...settings, theme: v })} options={[
           { value: 'auto', label: 'авто' }, { value: 'light', label: '☀️ светлая' }, { value: 'dark', label: '🌙 тёмная' },
@@ -81,7 +85,7 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
             </div>
           )}
           {dangerWins.length > 0 && (flags.praise || flags.warn) && (
-            <div className="text-[11px] mt-2" style={{ color: 'var(--mut)' }}>
+            <div className="text-[0.6875rem] mt-2" style={{ color: 'var(--mut)' }}>
               найденные окна: {dangerWins.map(w => `${w.hour}:00 (${w.count}×)`).join(' · ')}
             </div>
           )}
@@ -117,7 +121,7 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
           action={<button className="dd-link-btn" style={{ color: 'var(--warn)' }} onClick={() => setConfirmWipe(true)}>→</button>} />
       </div>
 
-      <p className="text-[10px] mt-6 text-center" style={{ color: 'var(--mut)' }}>
+      <p className="text-[0.625rem] mt-6 text-center" style={{ color: 'var(--mut)' }}>
         Deep Dish · v{__APP_VER__} · сборка {__APP_SHA__} · работает офлайн · синхронизация в M2
       </p>
 
@@ -140,7 +144,7 @@ function Row({ label, hint, action }: { label: string; hint?: string; action: Re
     <div className="flex justify-between items-center py-3">
       <div>
         <div className="text-sm font-medium">{label}</div>
-        {hint && <div className="text-[11px]" style={{ color: 'var(--mut)' }}>{hint}</div>}
+        {hint && <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>{hint}</div>}
       </div>
       {action}
     </div>

@@ -2,10 +2,10 @@ function MacroChip({ v, goal, k }: { v: number; goal?: number; k: string }) {
   const over = goal !== undefined && v > goal;
   return (
     <div className="dd-card flex-1 text-center py-2.5">
-      <div className="text-[15px] font-bold dd-num flex items-center justify-center gap-1" style={over ? { color: 'var(--warn)' } : undefined}>
-        {fmt(v)} г{over && <span className="text-[11px]">▲</span>}
+      <div className="text-[0.9375rem] font-bold dd-num flex items-center justify-center gap-1" style={over ? { color: 'var(--warn)' } : undefined}>
+        {fmt(v)} г{over && <span className="text-[0.6875rem]">▲</span>}
       </div>
-      <div className="text-[11px] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>
+      <div className="text-[0.6875rem] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>
     </div>
   );
 }
@@ -70,7 +70,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
         <div className="flex items-center">
           <button className="dd-arrow" onClick={() => { setDate(shiftISO(date, -1)); setDir(1); }} aria-label="Предыдущий день">‹</button>
           <button onClick={() => setCalOpen(true)} className="text-left px-0.5">
-            <div className="text-[18px] font-bold tracking-tight leading-tight">{humanDate(date)}</div>
+            <div className="text-[1.125rem] font-bold tracking-tight leading-tight">{humanDate(date)}</div>
           </button>
           <button className="dd-arrow" onClick={() => { setDate(shiftISO(date, 1)); setDir(-1); }} aria-label="Следующий день">›</button>
         </div>
@@ -79,7 +79,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
             <circle cx="48" cy="48" r="38" fill="none" stroke="var(--tr)" strokeWidth="12" />
             <circle cx="48" cy="48" r="38" fill="none" stroke="var(--acc)" strokeWidth="12" strokeLinecap="round" strokeDasharray="172 239" />
           </svg>
-          <span className="text-[18px] font-bold tracking-tight" style={{ color: 'var(--tx)' }}>deep dish</span>
+          <span className="text-[1.125rem] font-bold tracking-tight" style={{ color: 'var(--tx)' }}>deep dish</span>
         </div>
       </div>
 
@@ -96,12 +96,12 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                 {ringMode === 'kcal' ? (
                   <Ring percent={percent}>
                     <div className="text-lg font-extrabold dd-num">{fmt(rest)}</div>
-                    <div className="text-[10px]" style={{ color: 'var(--mut)' }}>осталось</div>
+                    <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось</div>
                   </Ring>
                 ) : (
                   <MacroRing p={totals.p * 4} f={totals.f * 9} c={totals.c * 4} cap={target}>
                     <div className="text-lg font-extrabold dd-num">{fmt(rest)}</div>
-                    <div className="text-[10px]" style={{ color: 'var(--mut)' }}>осталось</div>
+                    <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось</div>
                   </MacroRing>
                 )}
               </button>
@@ -129,7 +129,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
           return (
             <div key={slot.id} className="dd-card px-4 pt-4 pb-3 mb-2.5" onClick={() => es.length === 0 && onAdd(slot)}>
               <div className="flex justify-between items-baseline mb-1">
-                <button className="text-[15px] font-semibold flex items-baseline gap-2 dd-slot-link"
+                <button className="text-[0.9375rem] font-semibold flex items-baseline gap-2 dd-slot-link"
                   onClick={e => { e.stopPropagation(); setSlotInfo(slot); }}>
                   <span>{slot.emoji}</span>{slot.name}
                 </button>
@@ -154,7 +154,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
 
       <EntryEditModal entry={editEntry} onClose={() => setEditEntry(null)} />
       <Modal open={!!explain} onClose={() => setExplain(null)}>
-        <div className="text-[15px] font-bold mb-2">{explain?.title}</div>
+        <div className="text-[0.9375rem] font-bold mb-2">{explain?.title}</div>
         <p className="dd-modal-text">{explain?.text}</p>
         <div className="dd-modal-row">
           <button className="dd-action strong" onClick={() => setExplain(null)}>Понятно</button>
@@ -172,7 +172,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
       />
 
       <Modal open={goalInfo} onClose={() => setGoalInfo(false)}>
-        <div className="text-[15px] font-bold mb-2">Прогресс цели</div>
+        <div className="text-[0.9375rem] font-bold mb-2">Прогресс цели</div>
         {(() => {
           if (!goal) return <p className="dd-modal-text">Кольцо появляется при цели «худеть» или «набирать». При «держать» оно скрыто.</p>;
           const rows: Array<[string, string]> = [
@@ -184,8 +184,8 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
             <>
               {rows.map(([k, v]) => (
                 <div key={k} className="py-1.5" style={{ borderBottom: '1px solid var(--tr)' }}>
-                  <div className="text-[11px]" style={{ color: 'var(--mut)' }}>{k}</div>
-                  <div className="text-[13px]">{v}</div>
+                  <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>{k}</div>
+                  <div className="text-[0.8125rem]">{v}</div>
                 </div>
               ))}
               {goal.tooFast && (
@@ -248,7 +248,7 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
           <SlotLine key={e.id} e={e} />
         ))}
       </div>
-      <div className="text-[12.5px] mb-4" style={{ color: 'var(--mut)' }}>
+      <div className="text-[0.78125rem] mb-4" style={{ color: 'var(--mut)' }}>
             Сбалансированность: {verdicts.join('; ')}.
       </div>
       {entries.length === 0 && (
@@ -283,9 +283,9 @@ function SlotLine({ e }: { e: Entry }) {
     return () => { alive = false; };
   }, [e]);
   return (
-    <div className="flex justify-between items-baseline text-[13px] py-1" style={{ borderBottom: '1px solid var(--tr)' }}>
+    <div className="flex justify-between items-baseline text-[0.8125rem] py-1" style={{ borderBottom: '1px solid var(--tr)' }}>
       <span>{name}<span style={{ color: 'var(--mut)' }}> · {fmt(e.grams)} г</span></span>
-      <span className="dd-num text-[11.5px]" style={{ color: 'var(--mut)' }}>{fmt(e.snapshot.kcal)}</span>
+      <span className="dd-num text-[0.71875rem]" style={{ color: 'var(--mut)' }}>{fmt(e.snapshot.kcal)}</span>
     </div>
   );
 }
@@ -334,7 +334,7 @@ function GoalRing({ goal, onTap }: { goal: GoalProgress; onTap: () => void }) {
       </svg>
       <div className="dd-ring-val">
         <div className="text-lg font-extrabold dd-num">{label}</div>
-        <div className="text-[10px]" style={{ color: 'var(--mut)' }}>план</div>
+        <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>план</div>
       </div>
     </button>
   );
@@ -366,12 +366,12 @@ function EntryLine({ e, slot, showTime, onClick }: { e: Entry; slot: Slot; showT
   const isSnack = slot.defaultTime === null;
   const showT = showTime === 'all' || isSnack;
   return (
-    <div className="flex justify-between items-baseline text-[13.5px] py-1 cursor-pointer" onClick={onClick}>
+    <div className="flex justify-between items-baseline text-[0.84375rem] py-1 cursor-pointer" onClick={onClick}>
       <span style={{ color: 'var(--mut)' }}>
         {showT && <span className="dd-num" style={{ color: 'var(--acc-fg)' }}>{e.timeEaten} · </span>}
         {name}{qtyLabel}
       </span>
-      <span className="dd-num text-[11.5px]" style={{ color: 'var(--mut)' }}>{fmt(e.snapshot.kcal)}</span>
+      <span className="dd-num text-[0.71875rem]" style={{ color: 'var(--mut)' }}>{fmt(e.snapshot.kcal)}</span>
     </div>
   );
 }
@@ -394,7 +394,7 @@ function Calendar({ open, date, onClose, onPick, filled }: { open: boolean; date
 
   return (
     <Sheet open={open} onClose={onClose} title={`${MONTHS_NOM[month.getMonth()]} ${month.getFullYear()}`}>
-      <div className="grid grid-cols-7 gap-1 text-center text-[11px] mb-1" style={{ color: 'var(--mut)' }}>
+      <div className="grid grid-cols-7 gap-1 text-center text-[0.6875rem] mb-1" style={{ color: 'var(--mut)' }}>
         {['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(w => <div key={w}>{w}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-1">

@@ -36,8 +36,8 @@ export async function searchOff(query: string): Promise<OffHit[]> {
       if (res.ok) hits = (await res.json()).products ?? [];
     } catch { /* сервер недоступен — попробуем напрямую */ }
   }
-  if (!hits.length) hits = await searchOffDirect(q);
-  track('off_search', { q: q.slice(0, 20), found: hits.length, via: st && hits.length ? 'server' : 'direct' });
+  if (!hits.length) { try { hits = await searchOffDirect(q); } catch { /* обе дороги пусты — тихо */ } }
+  track('off_search', { q: q.slice(0, 30), found: hits.length, via: st && hits.length ? 'server' : 'direct' }); // В.: лог «искомое vs найденное» для решения судьбы поиска
   return hits;
 }
 

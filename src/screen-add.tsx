@@ -386,7 +386,7 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
       {item.kind === 'recipe' ? (
         <>
           <div className="dd-card p-4 text-center">
-            <div className="text-[15px] font-semibold">{item.name}</div>
+            <div className="text-[0.9375rem] font-semibold">{item.name}</div>
             <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>{fmt(item.per100.kcal)} ккал/100 г готового</div>
           </div>
           <div className="flex gap-2 mt-4">
@@ -412,8 +412,8 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
             <NumCell label="ккал" v={kcal} set={setKcal} />
           </div>
           {suspicious
-            ? <div className="text-[11px] mt-1" style={{ color: 'var(--warn)' }}>⚠️ калории ({fmt(parseFloat(kcal) || 0)}) не сходятся с БЖУ (расчёт {fmt(calcK)}) — блюдо будет с пометкой</div>
-            : bjzuFull && <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>из БЖУ получается {fmt(calcK)} ккал — если введёшь другое, блюдо получит ⚠️</div>}
+            ? <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--warn)' }}>⚠️ калории ({fmt(parseFloat(kcal) || 0)}) не сходятся с БЖУ (расчёт {fmt(calcK)}) — блюдо будет с пометкой</div>
+            : bjzuFull && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>из БЖУ получается {fmt(calcK)} ккал — если введёшь другое, блюдо получит ⚠️</div>}
           <div className="dd-field-label">Категория</div>
           <select className="dd-input dd-select" value={cat} onChange={e => setCat(e.target.value)}>
             <option value="Свои продукты">Свои продукты</option>
@@ -523,8 +523,8 @@ function CreateFood({ open, initialName, onClose }: { open: boolean; initialName
         <NumCell label="У" v={c} set={setC} />
         <NumCell label="ккал" v={kcal} set={s => { setKcalTouched(true); setKcal(s); }} />
       </div>
-      {!bjzuFull && <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>Заполни Б, Ж и У явно — нули тоже вводятся.</div>}
-      {!kcalTouched && <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>калории рассчитаны из БЖУ — введёшь свои, появится пометка ⚠️ если не сойдётся</div>}
+      {!bjzuFull && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>Заполни Б, Ж и У явно — нули тоже вводятся.</div>}
+      {!kcalTouched && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>калории рассчитаны из БЖУ — введёшь свои, появится пометка ⚠️ если не сойдётся</div>}
 
       <div className="dd-field-label">Категория{!catTouched && guessCategory(name) ? ' — подобрана по названию' : ''}</div>
       <select className="dd-input dd-select" value={cat} onChange={e => { setCatTouched(true); setCat(e.target.value); }}>
@@ -540,9 +540,9 @@ function CreateFood({ open, initialName, onClose }: { open: boolean; initialName
           {offState === 'loading' ? '…' : '⤓ найти'}
         </button>
       </div>
-      {offState === 'loading' && <div className="text-[11px] mt-1" style={{ color: 'var(--mut)' }}>ищу в Open Food Facts…</div>}
-      {offState && offState !== 'loading' && offState !== 'ok' && 'error' in offState ? <div className="text-[11px] mt-1" style={{ color: 'var(--warn)' }}>{offState.error} — введу руками</div> : null}
-      {offState === 'ok' && <div className="text-[11px] mt-1" style={{ color: 'var(--ok)' }}>нашёл — проверь и поправь при нужде</div>}
+      {offState === 'loading' && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>ищу в Open Food Facts…</div>}
+      {offState && offState !== 'loading' && offState !== 'ok' && 'error' in offState ? <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--warn)' }}>{offState.error} — введу руками</div> : null}
+      {offState === 'ok' && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--ok)' }}>нашёл — проверь и поправь при нужде</div>}
 
       {suspicious && <div className="dd-card p-3 mt-3 text-xs" style={{ color: 'var(--warn)' }}>⚠️ Калории не сходятся с БЖУ (расхождение &gt;25%). Проверь цифры — или сохрани, блюдо получит пометку ⚠️.</div>}
       <div className="flex gap-2 mt-4">
@@ -572,7 +572,7 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
   const [pickQ, setPickQ] = useState('');
   const [err, setErr] = useState('');
 
-  const foods = useLiveQuery(() => db.foods.filter(f => !f.deletedAt && f.source === 'system').toArray(), [], []);
+  const foods = useLiveQuery(() => db.foods.filter(f => !f.deletedAt && !f.hidden).toArray(), [], []);
   const picked = items.map(i => foods?.find(f => f.id === i.foodId)).filter(Boolean) as NonNullable<typeof foods>;
   const totalKcal = items.reduce((s, it, i) => s + (picked[i] ? picked[i].kcalPer100g * it.grams / 100 : 0), 0);
 
@@ -582,7 +582,7 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
     onClose(); setName(''); setItems([]); setYield(''); setErr('');
   }
 
-  const filtered = (foods ?? []).filter(f => !pickQ || f.name.toLowerCase().includes(pickQ.toLowerCase())).slice(0, 40);
+  const filtered = (foods ?? []).filter(f => !pickQ || normE(f.name).includes(normE(pickQ))).slice(0, 40);
 
   return (
     <Sheet open={open} onClose={onClose} title="Новый рецепт" note="Ингредиенты с граммовками + выход готового веса — КБЖУ посчитаются сами.">
@@ -598,7 +598,7 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
             <input className="dd-input dd-num" style={{ padding: '6px 8px', height: 34, width: 74, textAlign: 'center', flex: 'none' }} type="number" inputMode="numeric"
               value={it.grams}
               onChange={e => setItems(items.map((x, j) => j === i ? { ...x, grams: parseFloat(e.target.value) || 0 } : x))} />
-            <span className="text-[11px]" style={{ color: 'var(--mut)', flex: 'none' }}>г</span>
+            <span className="text-[0.6875rem]" style={{ color: 'var(--mut)', flex: 'none' }}>г</span>
             <button className="plus" onClick={() => setItems(items.filter((_, j) => j !== i))}>−</button>
           </div>
         );
@@ -620,17 +620,23 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
         <button className="dd-action strong" onClick={save}>Сохранить рецепт</button>
       </div>
 
-      <Sheet open={picking} onClose={() => setPicking(false)} title="Ингредиент">
-        <input className="dd-input mb-3" placeholder="Поиск продукта…" value={pickQ} onChange={e => setPickQ(e.target.value)} />
-        {filtered.map(f => (
-          <button key={f.id} className="dd-item" onClick={() => { setItems([...items, { foodId: f.id, grams: 100 }]); setPicking(false); setPickQ(''); }}>
-            <div className="flex-1 min-w-0">
-              <div className="nm truncate">{f.name}</div>
-              <div className="sub">{f.category} · {fmt(f.kcalPer100g)} ккал/100 г</div>
-            </div>
-          </button>
-        ))}
-      </Sheet>
+      {picking && (
+        <div className="mt-3">
+          <div className="flex items-center gap-2 mb-2">
+            <input className="dd-input flex-1" placeholder="Поиск продукта…" autoFocus value={pickQ} onChange={e => setPickQ(e.target.value)} />
+            <button className="dd-link-btn" style={{ flex: 'none', color: 'var(--warn)' }} onClick={() => { setPicking(false); setPickQ(''); }}>✕</button>
+          </div>
+          {(filtered ?? []).slice(0, 12).map(f => (
+            <button key={f.id} className="dd-item" onClick={() => { setItems([...items, { foodId: f.id, grams: 100 }]); setPicking(false); setPickQ(''); }}>
+              <div className="flex-1 min-w-0">
+                <div className="nm truncate">{f.name}</div>
+                <div className="sub">{f.category} · {fmt(f.kcalPer100g)} ккал/100 г</div>
+              </div>
+            </button>
+          ))}
+          {(filtered ?? []).length === 0 && <p className="text-[0.75rem] py-2 text-center" style={{ color: 'var(--mut)' }}>ничего не нашлось</p>}
+        </div>
+      )}
     </Sheet>
   );
 }

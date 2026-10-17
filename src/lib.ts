@@ -49,7 +49,8 @@ export const RADIALS: Record<string, RadialSpot[]> = {
   onboarding: [ { x:'50%', y:'0%', colorVar:'r1', size:'380px' }, { x:'10%', y:'100%', colorVar:'r2', size:'260px' } ],
 };
 
-export function applyTheme(paletteKey: string, dark: boolean) {
+export function applyTheme(paletteKey: string, dark: boolean, textScale = 1) {
+  document.documentElement.style.fontSize = `${16 * textScale}px`;
   const pal = PALETTES.find(p => p.key === paletteKey) ?? PALETTES[0];
   const t = dark ? pal.dark : pal.light;
   const root = document.documentElement;
@@ -61,11 +62,13 @@ export function applyTheme(paletteKey: string, dark: boolean) {
 
 // ── Настройки устройства (не синхронизируются) ──
 export interface DeviceSettings {
+  /** масштаб текста: 1 = обычный, 1.15 = крупный, 1.3 = очень крупный */
+  textScale?: number;
   palette: string; theme: 'auto' | 'light' | 'dark'; showTime: 'snacks' | 'all'; onboarded: boolean;
   /** рассчитывать калории из БЖУ при создании продуктов (по умолчанию вкл) */
   calcKcal: boolean;
 }
-const DEF: DeviceSettings = { palette: 'graphite', theme: 'auto', showTime: 'snacks', onboarded: false, calcKcal: true };
+const DEF: DeviceSettings = { palette: 'graphite', theme: 'auto', showTime: 'snacks', onboarded: false, calcKcal: true, textScale: 1 };
 export function loadSettings(): DeviceSettings {
   try { return { ...DEF, ...JSON.parse(localStorage.getItem('dd-settings') ?? '{}') }; } catch { return DEF; }
 }
