@@ -208,6 +208,32 @@ class DeepDishDb extends Dexie {
       dayNormas: 'date',
       slotMarks: 'id, date',
     });
+    // v6 (0.5.3): пересчёт kcalPer100g рецептов — старая формула делила на 100 лишний раз
+    // (137 ккал сохранялись как 1.37, БЖУ были верны). Чиним и снапшоты ккал у записей рецептов.
+    this.version(6).stores({}).upgrade(async tx => {
+      const foods = await tx.table('foods').toArray();
+      const fmap = new Map(foods.map((f: { id: string; kcalPer100g: number }) => [f.id, f] as const));
+      const recipes = await tx.table('recipes').toArray();
+      const now = Date.now();
+      const fixed = new Map<string, number>();
+      for (const r of recipes) {
+        if (!r.items?.length) continue;
+        let kcal = 0;
+        for (const it of r.items) {
+          const fd = fmap.get(it.foodId);
+          if (fd) kcal += fd.kcalPer100g * it.grams / 100;
+        }
+        const k100 = Math.round(kcal / Math.max(r.yieldG, 1) * 1000) / 10;
+        fixed.set(r.id, k100);
+        await tx.table('recipes').update(r.id, { kcalPer100g: k100, updatedAt: now });
+      }
+      const entries = await tx.table('entries').toArray();
+      for (const e of entries) {
+        if (e.kind !== 'recipe' || !fixed.has(e.refId)) continue;
+        const snap = { ...e.snapshot, kcal: Math.round(fixed.get(e.refId)! * e.grams / 10) / 10 };
+        await tx.table('entries').update(e.id, { snapshot: snap, updatedAt: now });
+      }
+    });
   }
 }
 
