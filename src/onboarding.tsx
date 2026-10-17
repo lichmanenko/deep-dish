@@ -51,15 +51,16 @@ function Step({ emoji, title, text }: { emoji: string; title: string; text: stri
 }
 
 /** Числовое поле со строковым состоянием: очистка не рождает «0», ввод не даёт «039». */
-export function NumField({ label, value, onChange, unit }: {
+export function NumField({ label, value, onChange, unit, dec }: {
   label: string; value: number | undefined; onChange: (n: number | undefined) => void; unit?: string;
+  dec?: boolean; // дробный ввод (вес: 85,6) — клавиатура с разделителем
 }) {
-  const [s, setS] = useState(value === undefined ? '' : String(value));
+  const [s, setS] = useState(value === undefined ? '' : String(value).replace('.', ','));
   return (
     <div className="flex-1 min-w-0">
       <div className="dd-field-label" style={{ marginTop: 0 }}>{label}</div>
       <input
-        className="dd-input dd-num" type="number" inputMode="numeric" value={s}
+        className="dd-input dd-num" type="number" inputMode={dec ? 'decimal' : 'numeric'} step={dec ? '0.01' : '1'} value={s}
         onChange={e => {
           setS(e.target.value);
           const n = parseFloat(e.target.value.replace(',', '.'));
@@ -94,7 +95,7 @@ function GoalStep({ onDone, skip }: { onDone: () => void; skip: () => void }) {
         <div className="dd-input-row">
           <NumField label="возраст" value={pr.age} onChange={n => set({ age: n ?? 0 })} />
           <NumField label="рост, см" value={pr.heightCm} onChange={n => set({ heightCm: n ?? 0 })} />
-          <NumField label="вес, кг" value={pr.weightKg} onChange={n => set({ weightKg: n })} />
+          <NumField label="вес, кг" value={pr.weightKg} onChange={n => set({ weightKg: n })} dec />
         </div>
 
         <div className="text-[0.75rem] font-semibold mt-3 mb-2" style={{ color: 'var(--mut)' }}>ЦЕЛЬ</div>

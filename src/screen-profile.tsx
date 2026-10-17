@@ -5,7 +5,9 @@ import { getProfile, saveProfile, calcNorma, track, getWeights, ensureDayNorma, 
 import type { Profile } from './db';
 import { db } from './db';
 import { Segmented, Modal, cx } from './ui';
-import { fmt, todayISO } from './lib';
+import { fmt, todayISO, loadSettings } from './lib';
+
+const ACT_LABELS: Record<string, string> = { sedentary: 'сидячая', light: 'лёгкая', moderate: 'средняя', active: 'высокая', very_active: 'высокая' };
 import { NumField } from './onboarding';
 
 const MACRO_PRESETS = [
@@ -89,7 +91,7 @@ export function ProfileScreen() {
         <div className="dd-input-row mt-2">
           <NumField label="возраст" value={pr.age} onChange={n => set({ age: n ?? 0 })} />
           <NumField label="рост, см" value={pr.heightCm} onChange={n => set({ heightCm: n ?? 0 })} />
-          <NumField label="вес, кг" value={pr.weightKg} onChange={n => set({ weightKg: n })} />
+          <NumField label="вес, кг" value={pr.weightKg} onChange={n => set({ weightKg: n })} dec />
         </div>
         <div className="text-[0.625rem] mt-2" style={{ color: 'var(--mut)' }}>текущий вес — точка отсчёта нормы; изменение веса записывается как взвешивание</div>
       </div>
@@ -98,6 +100,14 @@ export function ProfileScreen() {
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Активность</div>
+        {(loadSettings().textScale ?? 1) > 1.05 && pr ? (
+          // крупные шрифты: только текущий режим, ряд из пяти кнопок не влезает (В., 18.10)
+          <div className="dd-seg" style={{ display: 'flex' }}>
+            <button style={{ flex: 1 }} className="on" aria-disabled="true">
+              {dayNorma?.basis === 'adaptive' ? '⚡ тренд' : ACT_LABELS[pr.activity]}
+            </button>
+          </div>
+        ) : (
         <div className="dd-seg" style={{ display: 'flex' }}>
           <div style={{ flex: 1, display: 'flex', gap: 6, ...(dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : {}) }}>
             <button style={{ flex: 1 }} className={cx(pr.activity === 'sedentary' && 'on')} onClick={() => set({ activity: 'sedentary' })}>сидячая</button>
@@ -109,6 +119,7 @@ export function ProfileScreen() {
             <button style={{ flex: 1 }} className="on" aria-disabled="true">⚡ тренд</button>
           )}
         </div>
+        )}
         {dayNorma?.basis === 'adaptive' && (
           <div className="text-[0.6875rem] mt-1.5" style={{ color: 'var(--mut)' }}>
             расход берётся из твоей истории (что ел + как менялся вес), ручная активность пока не участвует

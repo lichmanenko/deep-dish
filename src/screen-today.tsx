@@ -3,6 +3,7 @@ function MacroChip({ v, goal, k, compact }: { v: number; goal?: number; k: strin
   return (
     <div className="dd-card flex-1 text-center py-2.5">
       <div className="text-[0.9375rem] font-bold dd-num flex items-center justify-center gap-1" style={over ? { color: 'var(--warn)' } : undefined}>
+        {compact && <span>{k[0].toUpperCase()}</span>}
         {fmt(v)} г{over && <span className="text-[0.6875rem]">▲</span>}
       </div>
       {!compact && <div className="text-[0.6875rem] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>}

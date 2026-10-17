@@ -36,6 +36,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: 'index.html',
+        // служебные страницы (витрины дизайна/лого) не перехватывать SPA-фолбэком — иначе iOS отдаёт онбординг
+        navigateFallbackDenylist: [/^\/deep-dish\/design\//],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
         globIgnores: ['design/**'], // витрина палитр — не часть офлайн-приложения
       },

@@ -66,6 +66,7 @@ export function Sheet({ open, onClose, children, title, note }: {
     sheetRef.current?.classList.remove('dragging');
     if (d.active && (d.dy > 70 || d.v > 0.55)) onClose();
   };
+  useLockScroll(open);
   return (
     <>
       <div className={cx('dd-sheet-bg', open && 'show')} onClick={onClose} />
@@ -81,6 +82,80 @@ export function Sheet({ open, onClose, children, title, note }: {
         {children}
       </div>
     </>
+  );
+}
+
+// ── Модальность: пока открыт хоть один шит/модал — фон не скроллится и не кликается ──
+let scrollLocks = 0;
+function useLockScroll(open: boolean) {
+  useEffect(() => {
+    if (!open) return;
+    scrollLocks++;
+    document.documentElement.style.overflow = 'hidden';
+    return () => { if (--scrollLocks === 0) document.documentElement.style.overflow = ''; };
+  }, [open]);
+}
+
+/** верхняя доппанель (типовые порции при создании продукта): выезжает сверху, фон блурится */
+export function TopSheet({ open, onClose, title, children }: {
+  open: boolean; onClose: () => void; children: React.ReactNode; title?: string;
+}) {
+  useLockScroll(open);
+  return (
+    <>
+      <div className={cx('dd-sheet-bg', open && 'show')} onClick={onClose} />
+      <div className={cx('dd-topsheet', open && 'show')}>
+        <div className="dd-sheet-head">
+          <div className="dd-grab" />
+          {title && <h3 className="dd-sheet-title">{title}</h3>}
+        </div>
+        {children}
+      </div>
+    </>
+  );
+}
+
+/** строка со свайпом влево для удаления (ингредиент рецепта): touch-action pan-y не мешает вертикальному скроллу */
+export function SwipeRow({ onRemove, children }: { onRemove: () => void; children: React.ReactNode }) {
+  const [dx, setDx] = useState(0);
+  const [anim, setAnim] = useState(true);
+  const st = useRef<{ x0: number; y0: number; active: boolean | null } | null>(null);
+  const onDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    st.current = { x0: e.clientX, y0: e.clientY, active: null };
+    setAnim(false);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    const s = st.current; if (!s) return;
+    const dxp = e.clientX - s.x0, dyp = e.clientY - s.y0;
+    if (s.active === null) {
+      if (Math.abs(dyp) > 8 && Math.abs(dyp) > Math.abs(dxp)) { st.current = null; return; } // вертикаль — скролл листа
+      if (dxp < -8) {
+        s.active = true;
+        try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* захвачено */ }
+      } else if (dxp > 8) { st.current = null; return; }
+      else return;
+    }
+    setDx(Math.max(-96, Math.min(0, dxp)));
+  };
+  const onUp = () => {
+    const s = st.current; if (!s) return;
+    st.current = null;
+    setAnim(true);
+    if (s.active && dx < -64) { setDx(-96); setTimeout(onRemove, 120); }
+    else setDx(0);
+  };
+  return (
+    <div className="dd-swiperow">
+      <div className="dd-swiperow-del">удалить</div>
+      <div
+        className="dd-swiperow-body"
+        style={{ transform: `translateX(${dx}px)`, transition: anim ? 'transform .18s ease' : 'none' }}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -105,6 +180,7 @@ export function ActionButton({ children, onClick, type }: { children: React.Reac
 }
 
 export function Modal({ open, onClose, children }: { open: boolean; onClose?: () => void; children: React.ReactNode }) {
+  useLockScroll(open);
   if (!open) return null;
   return (
     <div className="dd-modal-bg" onClick={onClose}>
