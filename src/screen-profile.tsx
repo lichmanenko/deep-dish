@@ -99,12 +99,11 @@ export function ProfileScreen() {
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Активность</div>
         <div className="dd-seg" style={{ display: 'flex' }}>
-          <div style={{ flex: 5, display: 'flex', gap: 6, ...(dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : {}) }}>
+          <div style={{ flex: 1, display: 'flex', gap: 6, ...(dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : {}) }}>
             <button style={{ flex: 1 }} className={cx(pr.activity === 'sedentary' && 'on')} onClick={() => set({ activity: 'sedentary' })}>сидячая</button>
             <button style={{ flex: 1 }} className={cx(pr.activity === 'light' && 'on')} onClick={() => set({ activity: 'light' })}>лёгкая</button>
             <button style={{ flex: 1 }} className={cx(pr.activity === 'moderate' && 'on')} onClick={() => set({ activity: 'moderate' })}>средняя</button>
-            <button style={{ flex: 1 }} className={cx(pr.activity === 'active' && 'on')} onClick={() => set({ activity: 'active' })}>высокая</button>
-            <button style={{ flex: 1 }} className={cx(pr.activity === 'very_active' && 'on')} onClick={() => set({ activity: 'very_active' })}>оч. выс.</button>
+            <button style={{ flex: 1 }} className={cx((pr.activity === 'active' || pr.activity === 'very_active') && 'on')} onClick={() => set({ activity: 'active' })}>высокая</button>
           </div>
           {dayNorma?.basis === 'adaptive' && (
             <button style={{ flex: 1 }} className="on" aria-disabled="true">⚡ тренд</button>

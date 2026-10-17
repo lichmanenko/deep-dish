@@ -139,7 +139,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                 </button>
                 <div className="text-xs dd-num flex items-center" style={{ color: 'var(--mut)' }}>
                   {es.length
-                    ? <span className="dd-num font-bold" style={{ fontSize: '0.84375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
+                    ? <span className="dd-num font-bold" style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
                     : (marks ?? []).some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : 'ничего'}
                 </div>
               </div>
@@ -289,7 +289,7 @@ function SlotLine({ e }: { e: Entry }) {
   return (
     <div className="flex justify-between items-baseline gap-2 text-[0.8125rem] py-1" style={{ borderBottom: '1px solid var(--tr)' }}>
       <span className="flex-1 min-w-0 truncate">{name}<span style={{ color: 'var(--mut)' }}> · {fmt(e.grams)} г</span></span>
-      <span className="dd-num flex-none text-[0.9375rem] font-semibold" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
+      <span className="dd-num flex-none text-[0.875rem]" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
     </div>
   );
 }
@@ -375,7 +375,7 @@ function EntryLine({ e, slot, showTime, onClick }: { e: Entry; slot: Slot; showT
         {showT && <span className="dd-num" style={{ color: 'var(--acc-fg)' }}>{e.timeEaten} · </span>}
         {name}{qtyLabel}
       </span>
-      <span className="dd-num flex-none text-[0.96875rem] font-semibold" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
+      <span className="dd-num flex-none text-[0.90625rem]" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
     </div>
   );
 }
