@@ -172,7 +172,8 @@ export async function saveProfile(p: Profile) {
   }
 }
 
-const ACT: Record<Profile['activity'], number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
+// very_active приравнен к active (В., 18.10: кнопка упразднена, тренд копится — «очень высокое» не отличаем)
+const ACT: Record<Profile['activity'], number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.725 };
 
 export interface Norma { kcal: number; p: number; f: number; c: number; bmr: number; tdee: number; adj: number; }
 
