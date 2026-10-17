@@ -129,7 +129,7 @@ export async function saveRecipe(name: string, items: Array<{ foodId: string; gr
   const y = Math.max(yieldG, 1);
   const recipe: Recipe = {
     id: newId(), name, items, yieldG: y,
-    kcalPer100g: Math.round(kcal / y * 100) / 100,
+    kcalPer100g: Math.round(kcal / y * 1000) / 10,
     pPer100g: Math.round(p / y * 1000) / 10,
     fPer100g: Math.round(f / y * 1000) / 10,
     cPer100g: Math.round(c / y * 1000) / 10,
