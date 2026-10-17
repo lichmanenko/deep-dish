@@ -3,6 +3,20 @@ import React, { useEffect, useRef, useState } from 'react';
 
 export const cx = (...a: Array<string | false | undefined>) => a.filter(Boolean).join(' ');
 
+/** знак Deep Dish (раунд-3, вариант 3): «d» от хвостика — штрих 2R справа над «3 часами», кольцо до «2 часов»; сегменты 50/30/20 светлеют к разрыву */
+export function LogoMark({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="9 9 55 75" aria-hidden="true">
+      <path className="dd-logo-s1" fill="none" strokeWidth="6.5" strokeLinecap="round"
+        d="M61.00 12.00 L61.00 35.00 L61.00 58.00 L60.38 63.30 L57.92 69.50 L53.78 74.73 L48.32 78.55 L41.99 80.65 L35.33 80.84 L28.89 79.12" />
+      <path className="dd-logo-s2" fill="none" strokeWidth="6.5" strokeLinecap="round"
+        d="M26.50 77.92 L19.55 71.73 L15.62 63.30 L15.00 58.00 L15.97 51.40 L18.88 45.36 L19.55 44.27" />
+      <path className="dd-logo-s3" fill="none" strokeWidth="6.5" strokeLinecap="round"
+        d="M23.22 40.38 L28.89 36.88 L35.33 35.16 L41.99 35.35 L48.32 38.08 L49.50 38.08" />
+    </svg>
+  );
+}
+
 export function Card({ children, className, onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) {
   return (
     <div onClick={onClick} className={cx('dd-card', className)}>{children}</div>

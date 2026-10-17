@@ -334,3 +334,11 @@ input[type=time].dd-input { padding: 0 8px; }
   position: relative; background: var(--panel); will-change: transform;
   touch-action: pan-y;
 }
+
+/* ── Знак Deep Dish: сегменты светлеют к разрыву ── */
+.dd-logo-s1 { stroke: #4E7EA6; }
+.dd-logo-s2 { stroke: #7FA8C9; }
+.dd-logo-s3 { stroke: #B7D4E8; }
+.dark .dd-logo-s1 { stroke: #5B87A8; }
+.dark .dd-logo-s2 { stroke: #8FB8D8; }
+.dark .dd-logo-s3 { stroke: #CFE4F2; }
