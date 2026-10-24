@@ -104,3 +104,19 @@ describe('нормализация поиска Е/Ё', () => {
     expect(normE('МЁД')).toBe(normE('мед'));
   });
 });
+
+
+// нечёткий поиск каталога (v0.7.0): опечатки жены В. — «Карустный» → «Капустный»
+describe('levWithin — нечёткий поиск', () => {
+  it('ловит одну-две опечатки', async () => {
+    const { levWithin } = await import('./store');
+    expect(levWithin('капустный', 'карустный', 2)).toBe(true);
+    expect(levWithin('творог', 'творо', 2)).toBe(true);
+    expect(levWithin('молоко', 'молако', 2)).toBe(true);
+  });
+  it('не ловит разные слова и длинные разницы', async () => {
+    const { levWithin } = await import('./store');
+    expect(levWithin('молоко', 'кефир', 2)).toBe(false);
+    expect(levWithin('молоко', 'молокоперваяобработкаультрапастеризованное', 2)).toBe(false);
+  });
+});

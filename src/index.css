@@ -80,6 +80,8 @@ body {
 
 /* ── Сегмент ── */
 .dd-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+/* канон: кнопки сегментной группы делят ширину контейнера поровну (DESIGN.md §Контролы) */
+.dd-seg > button { flex: 1 1 0; }
 .dd-seg button {
   font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 8px 13px; border-radius: 14px;
   border: none; background: var(--veil); color: var(--mut); cursor: pointer;

@@ -1,7 +1,10 @@
 // Экран добавления еды: sticky-поиск; секции «Из недавних»/«Найдено» при поиске;
 // без поиска — Недавние/Проверенные вертикальными списками + единый «Все продукты»;
 // свои продукты/рецепты: правка и удаление; ⚠️ и превышения — подсказки по тапу.
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+
+// ZXing тянем лениво: чанк сканера не раздувает основной бандл
+const ScannerLayer = lazy(() => import('./scanner-layer').then(m => ({ default: m.ScannerLayer })));
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
 import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
@@ -17,6 +20,8 @@ interface AddScreenProps {
 
 export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   const [q, setQ] = useState('');
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanEan, setScanEan] = useState<string | null>(null);
   const [editing, setEditing] = useState<null | (Pick<EntryEditProps, 'item' | 'presetGrams' | 'presetTime'>)>(null);
   const [creatingFood, setCreatingFood] = useState(false);
   const [creatingRecipe, setCreatingRecipe] = useState(false);
@@ -99,6 +104,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <button className="dd-arrow" onClick={onDone} aria-label="Назад">‹</button>
           <div className="flex-1" />
           <button className="dd-link-btn" onClick={() => setCreatingRecipe(true)}>+ рецепт</button>
+          <button className="dd-link-btn" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open'); }}>📷 штрихкод</button>
           <button className="dd-link-btn" onClick={() => setCreatingFood(true)}>＋ продукт</button>
         </div>
         <div className="px-4 pt-1 dd-searchwrap">
@@ -136,8 +142,14 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
             <Section title="⌕ Найдено" id="srch-found" defaultOpen>
               {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
                 <p className="text-sm mt-4 text-center" style={{ color: 'var(--mut)' }}>
-                  Ничего не нашлось. Создай свой продукт — кнопка「＋ продукт」
+                  Ничего не нашлось.
                 </p>
+              )}
+              {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
+                <div className="flex gap-2 mb-3">
+                  <button className="dd-action" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open', { from: 'empty' }); }}>📷 Сканировать штрихкод</button>
+                  {q.trim() && <button className="dd-action strong" onClick={() => setCreatingFood(true)}>＋ Создать «{q.trim()}»</button>}
+                </div>
               )}
               {searchRest.map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
             </Section>
@@ -170,7 +182,23 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
         onClose={() => setEditing(null)}
         onSaved={() => setQ('')}
       />
-      <CreateFood open={creatingFood} initialName={q.trim()} onClose={() => setCreatingFood(false)} />
+      {scanOpen && (
+        <Suspense fallback={null}>
+          <ScannerLayer
+            onClose={() => setScanOpen(false)}
+            onCode={ean => {
+              setScanOpen(false);
+              track('scan_hit', {});
+              const local = (catalog ?? []).find(i => i.kind === 'food' && i.food.barcode === ean);
+              if (local) { openItem(local); return; }
+              // в каталоге нет — создать продукт с этим кодом (КБЖУ подтянутся из OFF)
+              setScanEan(ean);
+              setCreatingFood(true);
+            }} />
+        </Suspense>
+      )}
+
+      <CreateFood open={creatingFood} initialName={q.trim()} initialEan={scanEan} onClose={() => { setCreatingFood(false); setScanEan(null); }} />
       <CreateRecipe open={creatingRecipe} onClose={() => setCreatingRecipe(false)} />
       <ManageItem item={managing} onClose={() => setManaging(null)} />
 
@@ -485,7 +513,7 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
 }
 
 // ── Создание своего продукта: БЖУ → калории (авто-режим), категория, EAN-13 ──
-function CreateFood({ open, initialName, onClose }: { open: boolean; initialName: string; onClose: () => void }) {
+function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean; initialName: string; initialEan?: string | null; onClose: () => void }) {
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [unit, setUnit] = useState<'g' | 'pc'>('g');
@@ -506,7 +534,8 @@ function CreateFood({ open, initialName, onClose }: { open: boolean; initialName
     const g = guessCategory(initialName);
     setCat(g ?? 'Свои продукты'); setCatTouched(false);
     setKcalTouched(false); setOffState(null);
-  }, [open, initialName]);
+    if (initialEan) setEan(initialEan); // из сканера: поле кода заполнено — ищем КБЖУ сами
+  }, [open, initialName, initialEan]);
 
   const nums = [kcal, p, f, c].map(x => parseFloat(x.replace(',', '.')) || 0);
   const perLabel = unit === 'pc' ? 'на 1 порцию' : 'на 100 г';

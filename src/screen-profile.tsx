@@ -6,6 +6,8 @@ import type { Profile } from './db';
 import { db } from './db';
 import { Segmented, Modal, cx } from './ui';
 import { fmt, todayISO, loadSettings } from './lib';
+import { loadFlags, saveFlags, BASE_FLAG_CATS, type FlagSettings } from './banner';
+import { Toggle } from './ui';
 
 const ACT_LABELS: Record<string, string> = { sedentary: 'сидячая', light: 'лёгкая', moderate: 'средняя', active: 'высокая', very_active: 'высокая' };
 import { NumField } from './onboarding';
@@ -26,6 +28,11 @@ const DEFAULT: Profile = {
 export function ProfileScreen() {
   const fileAvatar = useRef<HTMLInputElement>(null);
   const [pr, setPr] = useState<Profile | null>(null);
+  // мотивационные баннеры (перенос из Настроек, В. 19.10)
+  const [flags, setFlags] = useState<FlagSettings>(() => loadFlags());
+  const [flagsOpen, setFlagsOpen] = useState(false);
+  const catsList = useLiveQuery(async () =>
+    [...new Set((await db.foods.filter(f => !f.deletedAt).toArray()).map(f => f.category))].sort(), [], [] as string[]);
   const [baseline, setBaseline] = useState('');
   const [saved, setSaved] = useState(false);
   const weights = useLiveQuery(() => getWeights(), [], [] as WeightPoint[]);
@@ -85,7 +92,7 @@ export function ProfileScreen() {
         }} />
 
       <div className="dd-card p-4 mb-4">
-        <div className="dd-field-label" style={{ marginTop: 0 }}>Пол</div>
+        <div className="dd-field-label" style={{ marginTop: 0 }}>О тебе</div>
         <Segmented value={pr.gender} onChange={v => set({ gender: v })} options={[{ value: 'male', label: '♂ мужской' }, { value: 'female', label: '♀ женский' }]} />
 
         <div className="dd-input-row mt-2">
@@ -151,6 +158,30 @@ export function ProfileScreen() {
             </div>
           </>
         )}
+      </div>
+
+      <div className="dd-card px-4 py-1 mb-4">
+        <div className="dd-field-label" style={{ marginTop: 12 }}>Мотивация</div>
+        <div className="flex justify-between items-center py-3">
+          <div className="text-sm">Мотивирующие баннеры</div>
+          <Toggle on={flags.praise || flags.warn} onChange={v => { const f = { ...flags, praise: v, warn: v }; setFlags(f); saveFlags(f); }} />
+        </div>
+        <div className="pb-3">
+          <button className="dd-link-btn" style={{ padding: '6px 0' }} onClick={() => setFlagsOpen(!flagsOpen)}>
+            Красные флаги <span style={{ color: 'var(--mut)' }}>{flags.cats.length} категорий</span> {flagsOpen ? '▲' : '▼'}
+          </button>
+          {flagsOpen && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {[...BASE_FLAG_CATS, ...new Set((catsList ?? []).filter(c => !BASE_FLAG_CATS.includes(c)))].map(c => (
+                <button key={c} className={flags.cats.includes(c) ? 'dd-cat-chip on' : 'dd-cat-chip'}
+                  onClick={() => {
+                    const cs = flags.cats.includes(c) ? flags.cats.filter(x => x !== c) : [...flags.cats, c];
+                    const f = { ...flags, cats: cs }; setFlags(f); saveFlags(f);
+                  }}>{c}</button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="dd-card p-4 mb-4">
