@@ -9,6 +9,7 @@ import { TodayScreen } from './screen-today';
 import { AddScreen } from './screen-add';
 import { ProfileScreen } from './screen-profile';
 import { SettingsScreen } from './screen-settings';
+import { fixLegacyCats } from './store';
 import { FamilyScreen } from './family';
 import { loadSync } from './sync';
 import type { Slot } from './db';
@@ -41,6 +42,7 @@ export default function App() {
   }, [settings.palette, settings.theme]);
 
   useEffect(() => { track('app_open', { online: navigator.onLine, cold: true }); }, []);
+  useEffect(() => { fixLegacyCats(); }, []); // v0.7.3: чистка категорий-суррогатов
   useEffect(() => {
     autoSync();
     const h = () => autoSync();
@@ -187,9 +189,9 @@ const Icons = {
     </svg>
   ),
   Gear: () => (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2.8v2.4M12 18.8v2.4M4.3 6.5l1.9 1.4M17.8 16.1l1.9 1.4M2.8 12h2.4M18.8 12h2.4M4.3 17.5l1.9-1.4M17.8 7.9l1.9-1.4" />
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12.18 5.20 L12.88 2.84 L17.85 4.90 L16.68 7.07 L16.93 7.32 L19.10 6.15 L21.16 11.12 L18.80 11.82 L18.80 12.18 L21.16 12.88 L19.10 17.85 L16.93 16.68 L16.68 16.93 L17.85 19.10 L12.88 21.16 L12.18 18.80 L11.82 18.80 L11.12 21.16 L6.15 19.10 L7.32 16.93 L7.07 16.68 L4.90 17.85 L2.84 12.88 L5.20 12.18 L5.20 11.82 L2.84 11.12 L4.90 6.15 L7.07 7.32 L7.32 7.07 L6.15 4.90 L11.12 2.84 L11.82 5.20 Z" />
     </svg>
   ),
 };

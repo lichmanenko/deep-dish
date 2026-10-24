@@ -150,7 +150,7 @@ select.dd-input option { background: var(--bg2); color: var(--tx); }
 input[type=time].dd-input { padding: 0 8px; }
 .dd-input[disabled] { opacity: .75; }
 .dd-input[readonly] { opacity: .9; }
-.dd-input::placeholder { color: var(--mut); }
+.dd-input::placeholder { color: color-mix(in srgb, var(--mut) 62%, var(--bg)); }
 .dd-field-label { font-size: 0.75rem; font-weight: 600; color: var(--mut); margin: 12px 2px 6px; }
 .dd-input-row { display: flex; gap: 8px; }
 .dd-input-row .dd-input { flex: 1; }
@@ -264,6 +264,12 @@ input[type=time].dd-input { padding: 0 8px; }
   width: 30px; height: 30px; border-radius: 10px; border: none; background: none;
   color: var(--mut); font-size: 0.875rem; cursor: pointer;
 }
+.dd-scanbtn {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 34px; border-radius: 11px; border: none; background: var(--veil);
+  color: var(--acc-fg); display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.dd-scanbtn:active { background: var(--tr); }
 .dd-addhead {
   position: sticky; top: 0; z-index: 30;
   background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 78%, transparent 100%);

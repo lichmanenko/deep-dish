@@ -73,7 +73,7 @@ async function searchOffDirect(q: string): Promise<OffHit[]> {
 export async function saveOffHit(h: OffHit): Promise<Food> {
   const food: Food = {
     id: newId(), name: h.name, brand: h.brand,
-    category: guessCategory(h.name) ?? 'Импорт OFF',
+    category: guessCategory(h.name) ?? 'Прочее',
     kcalPer100g: h.kcal, pPer100g: h.p, fPer100g: h.f, cPer100g: h.c,
     unit: 'g', source: 'off', ownerId: LOCAL_USER, isPublic: true,
     createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null,

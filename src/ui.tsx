@@ -3,6 +3,15 @@ import React, { useEffect, useRef, useState } from 'react';
 
 export const cx = (...a: Array<string | false | undefined>) => a.filter(Boolean).join(' ');
 
+/** иконка штрихкода — в стиле таб-барных иконок (штрих stroke, не эмодзи) */
+export function BarcodeIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+      <path d="M3 5v14M6.2 5v14M9.4 5v14M12.6 5v14M15.8 5v14M19 5v14M21.4 5v14" />
+    </svg>
+  );
+}
+
 /** знак Deep Dish (раунд-3, вариант 3): «d» от хвостика — штрих 2R справа над «3 часами», кольцо до «2 часов»; сегменты 50/30/20 светлеют к разрыву */
 export function LogoMark({ size = 20 }: { size?: number }) {
   return (
