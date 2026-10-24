@@ -6,7 +6,7 @@ import { db } from './db';
 import type { Slot } from './db';
 import { PALETTES, type DeviceSettings, todayISO } from './lib';
 import { exportJSON, exportCSV, download, wipeAll, track, importJSONText } from './store';
-import { Segmented, Confirm, Modal } from './ui';
+import { Segmented, Confirm, Modal, TopSheet } from './ui';
 import { HelpSheet } from './help';
 
 export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
@@ -14,6 +14,13 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
 }) {
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [palOpen, setPalOpen] = useState(false);
+  const curPal = () => PALETTES.find(p => p.key === settings.palette) ?? PALETTES[0];
+  const palSw = (p: typeof PALETTES[number]) => {
+    const darkNow = settings.theme !== 'auto' ? settings.theme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const c = darkNow ? p.dark : p.light;
+    return `linear-gradient(135deg, ${c.acc}, ${c.acc2})`;
+  };
   // импорт JSON (перенос каталога между устройствами)
   const fileJson = useRef<HTMLInputElement>(null);
   const [importMsg, setImportMsg] = useState<string | null>(null);
@@ -38,23 +45,16 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Внешний вид приложения</div>
-        <div className="dd-field-label">Цветовая гамма</div>
-        {/* палитры — списком строк со свотчем: имена в сегмент из 5 не влезают поровну (аудит v0.7.0) */}
-        <div>
-          {PALETTES.map((p, i) => {
-            const darkNow = settings.theme !== 'auto' ? settings.theme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const c = darkNow ? p.dark : p.light;
-            const on = p.key === settings.palette;
-            return (
-              <button key={p.key} className="w-full flex justify-between items-center text-left"
-                style={{ minHeight: 46, paddingLeft: 2, paddingRight: 2, borderRadius: 12, background: on ? 'var(--veil)' : 'transparent', ...(i ? { borderTop: '1px solid var(--tr)' } : {}) }}
-                onClick={() => { setSettings({ ...settings, palette: p.key }); track('palette_changed', { to: p.key }); }}>
-                <span className="text-sm" style={{ color: on ? 'var(--acc-fg)' : 'var(--tx)', fontWeight: on ? 700 : 500 }}>{p.name}</span>
-                <span aria-hidden style={{ width: 22, height: 22, borderRadius: 999, background: `linear-gradient(135deg, ${c.acc}, ${c.acc2})`, boxShadow: '0 1px 4px rgba(0,0,0,.18)', flex: 'none' }} />
-              </button>
-            );
-          })}
-        </div>
+        {/* гамма — выпадающий список: свернута в строку с текущей палитрой, выбор в доппанели (В., 24.10) */}
+        <button className="w-full flex justify-between items-center text-left"
+          style={{ minHeight: 46, paddingLeft: 13, paddingRight: 13, borderRadius: 12, background: 'var(--veil)' }}
+          onClick={() => setPalOpen(true)}>
+          <span className="text-sm" style={{ color: 'var(--tx)' }}>{curPal()?.name}</span>
+          <span className="flex items-center gap-2" aria-hidden>
+            <span style={{ width: 22, height: 22, borderRadius: 999, background: palSw(curPal()), boxShadow: '0 1px 4px rgba(0,0,0,.18)' }} />
+            <span style={{ color: 'var(--mut)' }}>→</span>
+          </span>
+        </button>
         <div className="dd-field-label">Размер текста</div>
         <Segmented value={String(settings.textScale ?? 1)} onChange={v => setSettings({ ...settings, textScale: parseFloat(v) })} options={[
           { value: '1', label: 'обычный' }, { value: '1.15', label: 'крупный' }, { value: '1.3', label: 'очень крупный' },
@@ -68,12 +68,16 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Время приёма пищи</div>
         {(slots ?? []).map(s => (
-          <div key={s.id} className="flex justify-between items-center" style={{ minHeight: 54 }}>
+          <div key={s.id} className="flex justify-between items-center gap-2" style={{ minHeight: 54 }}>
             <div className="text-sm">{s.emoji} {s.name}</div>
             {s.defaultTime
-              ? <input type="time" className="dd-input dd-num" style={{ width: 110, padding: '8px 10px' }} value={s.defaultTime}
-                  onChange={e => db.slots.update(s.id, { defaultTime: e.target.value, updatedAt: Date.now() })} />
-              : <span className="text-xs" style={{ color: 'var(--mut)' }}>в момент записи</span>}
+              ? <div className="flex items-center gap-1">
+                  <input type="time" className="dd-input dd-num" style={{ width: 110, padding: '8px 10px' }} value={s.defaultTime}
+                    onChange={e => db.slots.update(s.id, { defaultTime: e.target.value, updatedAt: Date.now() })} />
+                  <button className="dd-link-btn" title="Время будет подставляться в момент записи"
+                    onClick={() => db.slots.update(s.id, { defaultTime: null, updatedAt: Date.now() })}>авто</button>
+                </div>
+              : <button className="dd-link-btn" onClick={() => db.slots.update(s.id, { defaultTime: '12:00', updatedAt: Date.now() })}>задать время</button>}
           </div>
         ))}
         <div className="dd-field-label">Показывать время у записей</div>
@@ -106,6 +110,20 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
       <p className="text-[0.625rem] mt-6 text-center" style={{ color: 'var(--mut)' }}>
         Deep Dish · v{__APP_VER__} · сборка {__APP_SHA__}
       </p>
+
+      <TopSheet open={palOpen} onClose={() => setPalOpen(false)} title="Цветовая гамма">
+        {PALETTES.map((p, i) => {
+          const on = p.key === settings.palette;
+          return (
+            <button key={p.key} className="w-full flex justify-between items-center text-left"
+              style={{ minHeight: 46, paddingLeft: 13, paddingRight: 13, borderRadius: 12, background: on ? 'var(--veil)' : 'transparent', ...(i ? { borderTop: '1px solid var(--tr)' } : {}) }}
+              onClick={() => { setSettings({ ...settings, palette: p.key }); track('palette_changed', { to: p.key }); }}>
+              <span className="text-sm" style={{ color: on ? 'var(--acc-fg)' : 'var(--tx)', fontWeight: on ? 700 : 500 }}>{p.name}</span>
+              <span aria-hidden style={{ width: 22, height: 22, borderRadius: 999, background: palSw(p), boxShadow: '0 1px 4px rgba(0,0,0,.18)', flex: 'none' }} />
+            </button>
+          );
+        })}
+      </TopSheet>
 
       <HelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
 

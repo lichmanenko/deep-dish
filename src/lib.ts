@@ -111,6 +111,11 @@ export function headDateSub(iso: string): string {
 /** Автоподбор категории по названию (keyword-словарь; можно поменять вручную). */
 import categoryKeywords from '../data/category-keywords.json';
 export const CATEGORY_KEYWORDS = categoryKeywords as Array<{ cat: string; words: string[] }>;
+
+// служебные категории-суррогаты импорта: для пользователя их не существует (В., 24.10) —
+// импортируемое категоризуется словарём по названию; не угадалось — «Прочее»
+export const HIDDEN_CATS = ['Импорт OFF', 'Импорт MFP'];
+
 export function guessCategory(name: string): string | null {
   const n = normE(name);
   for (const { cat, words } of CATEGORY_KEYWORDS) {

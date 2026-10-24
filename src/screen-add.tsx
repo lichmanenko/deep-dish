@@ -8,8 +8,8 @@ const ScannerLayer = lazy(() => import('./scanner-layer').then(m => ({ default: 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
 import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
-import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode } from './lib';
-import { Sheet, Modal, Confirm, Collapse, TopSheet, SwipeRow, cx } from './ui';
+import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS } from './lib';
+import { Sheet, Modal, Confirm, Collapse, TopSheet, SwipeRow, cx, BarcodeIcon as Icons_Barcode } from './ui';
 import { searchOff, saveOffHit, type OffHit } from './off';
 
 interface AddScreenProps {
@@ -104,16 +104,18 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <button className="dd-arrow" onClick={onDone} aria-label="Назад">‹</button>
           <div className="flex-1" />
           <button className="dd-link-btn" onClick={() => setCreatingRecipe(true)}>+ рецепт</button>
-          <button className="dd-link-btn" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open'); }}>📷 штрихкод</button>
           <button className="dd-link-btn" onClick={() => setCreatingFood(true)}>＋ продукт</button>
         </div>
         <div className="px-4 pt-1 dd-searchwrap">
           <input
             className="dd-input" placeholder={slot ? `Добавить в «${slot.name}»…` : 'Поиск: название или штрихкод…'}
-            value={q} onChange={e => setQ(e.target.value)} style={q ? { paddingRight: 44 } : undefined}
+            value={q} onChange={e => setQ(e.target.value)} style={{ paddingRight: 76 }}
           />
-          {q && <button className="dd-searchclear" aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
-          {offBusy && <span className="dd-searchdot" aria-hidden="true" />}
+          <button className="dd-scanbtn" aria-label="Сканировать штрихкод" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open'); }}>
+            <Icons_Barcode />
+          </button>
+          {q && <button className="dd-searchclear" style={{ right: 52 }} aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
+          {offBusy && <span className="dd-searchdot" style={{ right: 76 }} aria-hidden="true" />}
         </div>
       </div>
 
@@ -121,14 +123,14 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
         {mealList.length > 0 && (
           <Section title="🍽 Мои приёмы" id="meals" defaultOpen>
             {mealList.map(m => (
-              <div key={m.id} className="dd-item" role="button" onClick={() => tapMeal(m)}>
-                <div className="min-w-0 flex-1">
-                  <div className="nm truncate">{m.name}</div>
-                  <div className="sub">{m.items.length} поз. · ~{Math.round(mealKcal(m))} ккал — тап, чтобы внести</div>
+              <SwipeRow key={m.id} onRemove={() => setDelMeal(m)}>
+                <div className="dd-item" role="button" onClick={() => tapMeal(m)}>
+                  <div className="min-w-0 flex-1">
+                    <div className="nm truncate">{m.name}</div>
+                    <div className="sub">{m.items.length} поз. · ~{Math.round(mealKcal(m))} ккал — тап, чтобы внести</div>
+                  </div>
                 </div>
-                <button className="dd-more" title="Удалить приём"
-                  onClick={e => { e.stopPropagation(); setDelMeal(m); }}>⋯</button>
-              </div>
+              </SwipeRow>
             ))}
           </Section>
         )}
@@ -153,6 +155,9 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
               )}
               {searchRest.map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
             </Section>
+            {(offHits ?? []).length > 0 && (
+              <div className="dd-allhead" style={{ marginTop: 2 }}>Из интернета · Open Food Facts</div>
+            )}
             {(offHits ?? []).map(h => (
               <div key={'off-' + h.id + h.name} className="dd-item" role="button"
                 onClick={async () => {
@@ -531,6 +536,7 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
   const [cat, setCat] = useState('Свои продукты');
   const [catTouched, setCatTouched] = useState(false);
   const [kcalTouched, setKcalTouched] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   type OffState = null | 'loading' | 'ok' | { error: string };
   const [offState, setOffState] = useState<OffState>(null);
   const [portsOpen, setPortsOpen] = useState(false);
@@ -597,12 +603,25 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
     });
     onClose(); reset();
   }
-  function reset() { setName(''); setBrand(''); setUnit('g'); setKcal(''); setP(''); setF(''); setC(''); setEan(''); setCat('Свои продукты'); setCatTouched(false); setKcalTouched(false); setOffState(null); setPortsOpen(false); setPortRows([]); }
+  function reset() { setName(''); setBrand(''); setUnit('g'); setKcal(''); setP(''); setF(''); setC(''); setEan(''); setCat('Свои продукты'); setCatTouched(false); setKcalTouched(false); setSubmitted(false); setOffState(null); setPortsOpen(false); setPortRows([]); }
 
   return (
-    <Sheet open={open} onClose={() => { onClose(); reset(); }} title="Свой продукт"
-      note="Сначала белки-жиры-углеводы — калории посчитаются сами (можно перебить). Учёт — в граммах или порциями.">
-      <input className="dd-input" placeholder="Название (напр. Кофе латте)" value={name} onChange={e => setName(e.target.value)} />
+    <Sheet open={open} onClose={() => { onClose(); reset(); }} title="Добавить продукт"
+      note="Учёт — в граммах или порциями.">
+      <div className="dd-field-label">Штрихкод — найти КБЖУ в открытой базе</div>
+      <div className="dd-input-row">
+        <input className="dd-input dd-num" type="text" inputMode="numeric" placeholder="напр. 4680036912345"
+          value={ean} onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 13); setEan(v); setOffState(null); }} />
+        <button className="dd-action" style={{ flex: 'none', width: 92 }} disabled={!/^\d{12,13}$/.test(ean) || offState === 'loading'} onClick={lookup}>
+          {offState === 'loading' ? '…' : 'найти'}
+        </button>
+      </div>
+      {offState === 'loading' && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>ищу в Open Food Facts…</div>}
+      {offState && offState !== 'loading' && offState !== 'ok' && 'error' in offState ? <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--warn)' }}>{offState.error} — введу руками</div> : null}
+      {offState === 'ok' && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--ok)' }}>нашёл — проверь и поправь при нужде</div>}
+
+      <div className="dd-field-label">Название</div>
+      <input className="dd-input" placeholder="напр. Кофе латте" value={name} onChange={e => setName(e.target.value)} />
 
       <div className="dd-field-label">Производитель (необязательно)</div>
       <input className="dd-input" placeholder="напр. Простоквашино" value={brand} onChange={e => setBrand(e.target.value)} />
@@ -612,44 +631,32 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
         <button className={unit === 'g' ? 'on' : ''} onClick={() => setUnit('g')}>граммы</button>
         <button className={unit === 'pc' ? 'on' : ''} onClick={() => { setUnit('pc'); setPortRows([]); }}>порции (шт)</button>
       </div>
-      {unit === 'g' && (
-        <button className="dd-action mt-2" onClick={() => setPortsOpen(true)}>
-          ＋ Типовые порции{portRows.length ? ` · ${portRows.length}` : ''}
-        </button>
-      )}
 
-      <div className="dd-field-label">КБЖУ {perLabel}</div>
+      <div className="dd-field-label" style={submitted && !bjzuFull ? { color: 'var(--warn)' } : undefined}>КБЖУ {perLabel} · обязательные{submitted && !bjzuFull ? ' — заполни Б, Ж и У (нули тоже годятся)' : ''}</div>
       <div className="dd-input-row">
-        <NumCell label="Б" v={p} set={setP} />
-        <NumCell label="Ж" v={f} set={setF} />
-        <NumCell label="У" v={c} set={setC} />
+        <NumCell label="Б" v={p} set={setP} warn={submitted && p.trim() === ''} />
+        <NumCell label="Ж" v={f} set={setF} warn={submitted && f.trim() === ''} />
+        <NumCell label="У" v={c} set={setC} warn={submitted && c.trim() === ''} />
         <NumCell label="ккал" v={kcal} set={s => { setKcalTouched(true); setKcal(s); }} />
       </div>
-      {!bjzuFull && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>Заполни Б, Ж и У явно — нули тоже вводятся.</div>}
       {!kcalTouched && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>калории рассчитаны из БЖУ — введёшь свои, появится пометка ⚠️ если не сойдётся</div>}
 
       <div className="dd-field-label">Категория{!catTouched && guessCategory(name) ? ' — подобрана по названию' : ''}</div>
       <select className="dd-input dd-select" value={cat} onChange={e => { setCatTouched(true); setCat(e.target.value); }}>
         <option value="Свои продукты">Свои продукты</option>
-        {(cats ?? []).map(x => <option key={x} value={x}>{x}</option>)}
+        {(cats ?? []).filter(x => !HIDDEN_CATS.includes(x)).map(x => <option key={x} value={x}>{x}</option>)}
       </select>
 
-      <div className="dd-field-label">Штрихкод EAN-13 — найти КБЖУ в открытой базе</div>
-      <div className="dd-input-row">
-        <input className="dd-input dd-num" type="text" inputMode="numeric" placeholder="напр. 4680036912345"
-          value={ean} onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 13); setEan(v); setOffState(null); }} />
-        <button className="dd-action" style={{ flex: 'none', width: 92 }} disabled={!/^\d{12,13}$/.test(ean) || offState === 'loading'} onClick={lookup}>
-          {offState === 'loading' ? '…' : '⤓ найти'}
+      {unit === 'g' && (
+        <button className="dd-link-btn mt-2" onClick={() => setPortsOpen(true)}>
+          ＋ типовые порции{portRows.length ? ` · ${portRows.length}` : ''}
         </button>
-      </div>
-      {offState === 'loading' && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>ищу в Open Food Facts…</div>}
-      {offState && offState !== 'loading' && offState !== 'ok' && 'error' in offState ? <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--warn)' }}>{offState.error} — введу руками</div> : null}
-      {offState === 'ok' && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--ok)' }}>нашёл — проверь и поправь при нужде</div>}
+      )}
 
       {suspicious && <div className="dd-card p-3 mt-3 text-xs" style={{ color: 'var(--warn)' }}>⚠️ Калории не сходятся с БЖУ (расхождение &gt;25%). Проверь цифры — или сохрани, блюдо получит пометку ⚠️.</div>}
       <div className="flex gap-2 mt-4">
         <button className="dd-action" onClick={() => { onClose(); reset(); }}>Отмена</button>
-        <button className="dd-action strong" disabled={!valid} onClick={save}>Сохранить</button>
+        <button className="dd-action strong" onClick={() => { if (!valid) { setSubmitted(true); return; } save(); }}>Сохранить</button>
       </div>
 
       <TopSheet open={portsOpen} onClose={() => setPortsOpen(false)} title="Типовые порции">
@@ -674,11 +681,12 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
   );
 }
 
-function NumCell({ label, v, set, locked = false }: { label: string; v: string; set: (s: string) => void; locked?: boolean }) {
+function NumCell({ label, v, set, locked = false, warn = false }: { label: string; v: string; set: (s: string) => void; locked?: boolean; warn?: boolean }) {
   return (
     <div className="flex-1 min-w-0">
-      <div className="dd-field-label" style={{ marginTop: 0 }}>{label}</div>
+      <div className="dd-field-label" style={{ marginTop: 0, ...(warn ? { color: 'var(--warn)' } : {}) }}>{label}{warn ? ' !' : ''}</div>
       <input className="dd-input dd-num" type="number" inputMode="decimal" value={v}
+        style={warn ? { borderColor: 'var(--warn)' } : undefined}
         readOnly={locked} onChange={e => set(e.target.value)} />
     </div>
   );
@@ -730,8 +738,7 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
           </SwipeRow>
         );
       })}
-      <div className="text-[0.625rem] mt-1" style={{ color: 'var(--mut)' }}>смахни строку влево — ингредиент удалится</div>
-      <button className="dd-action" onClick={() => setPicking(true)}>＋ Добавить ингредиент</button>
+      <button className="dd-link-btn" style={{ padding: '6px 13px' }} onClick={() => setPicking(true)}>＋ ингредиент</button>
 
       <div className="dd-field-label">Выход готового веса, г (весь рецепт)</div>
       <input className="dd-input dd-num" type="number" inputMode="numeric" value={yieldG} onChange={e => setYield(e.target.value)} placeholder="напр. 520" />

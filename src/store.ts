@@ -1,7 +1,7 @@
 // Слой доступа к данным + расчёты нормы + трекер метрик
 import { bannerAction } from './banner';
 import { db, newId, LOCAL_USER, type Entry, type Food, type Profile, type Recipe, type Slot, type KbjuSnapshot, type DayNorma, type SlotMark, type PortionPreset } from './db';
-import { todayISO, nowHM, kbjuSuspicious, fmt, normE } from './lib';
+import { todayISO, nowHM, kbjuSuspicious, fmt, normE, guessCategory, HIDDEN_CATS } from './lib';
 
 // ── Метрики ──
 const SESSION = newId();
@@ -57,6 +57,17 @@ export type CatalogItem =
   | { kind: 'recipe'; id: string; name: string; sub: string; star: boolean; suspicious: boolean; per100: KbjuSnapshot; unit: 'g' | 'pc'; portions?: PortionPreset[]; recipe: Recipe };
 
 /** сохранить типовые порции позиции (карточка «⋯» → редактор порций) */
+/** Разовая чистка каталога от категорий-суррогатов импорта (v0.7.3, В.: суррогатов не существует).
+ *  Идемпотентна: после замены не находит. */
+export async function fixLegacyCats(): Promise<void> {
+  const bad = await db.foods.filter(f => !f.deletedAt && HIDDEN_CATS.includes(f.category)).toArray();
+  for (const f of bad) {
+    const cat = guessCategory(f.name) ?? 'Прочее';
+    await db.foods.update(f.id, { category: cat, updatedAt: Date.now() });
+  }
+  if (bad.length) console.info(`fixLegacyCats: перекатегоризовано ${bad.length}`);
+}
+
 export async function savePortions(kind: 'food' | 'recipe', id: string, portions: PortionPreset[]) {
   const now = Date.now();
   if (kind === 'food') await db.foods.update(id, { portions, updatedAt: now });

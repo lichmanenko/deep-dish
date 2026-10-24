@@ -5,7 +5,7 @@ import { getProfile, saveProfile, calcNorma, track, getWeights, ensureDayNorma, 
 import type { Profile } from './db';
 import { db } from './db';
 import { Segmented, Modal, cx } from './ui';
-import { fmt, todayISO, loadSettings } from './lib';
+import { fmt, todayISO, loadSettings, HIDDEN_CATS } from './lib';
 import { loadFlags, saveFlags, BASE_FLAG_CATS, type FlagSettings } from './banner';
 import { Toggle } from './ui';
 
@@ -32,7 +32,7 @@ export function ProfileScreen() {
   const [flags, setFlags] = useState<FlagSettings>(() => loadFlags());
   const [flagsOpen, setFlagsOpen] = useState(false);
   const catsList = useLiveQuery(async () =>
-    [...new Set((await db.foods.filter(f => !f.deletedAt).toArray()).map(f => f.category))].sort(), [], [] as string[]);
+    [...new Set((await db.foods.filter(f => !f.deletedAt).toArray()).map(f => f.category))].filter(c => !HIDDEN_CATS.includes(c)).sort(), [], [] as string[]);
   const [baseline, setBaseline] = useState('');
   const [saved, setSaved] = useState(false);
   const weights = useLiveQuery(() => getWeights(), [], [] as WeightPoint[]);
