@@ -67,8 +67,10 @@ async function searchOffDirect(q: string): Promise<OffHit[]> {
   return hits;
 }
 
-/** Сохранить находку в каталог (КБЖУ на 100 г, свой продукт — уедет семье при синке). */
-export async function saveOffHit(h: OffHit): Promise<string> {
+/** Сохранить находку в каталог (КБЖУ на 100 г, свой продукт — уедет семье при синке).
+ *  Возвращает сам продукт: карточка записи открывается из него напрямую,
+ *  минуя live-выдачу каталога (успевает раньше её обновления — дубль-сохранения, след жены 18.10). */
+export async function saveOffHit(h: OffHit): Promise<Food> {
   const food: Food = {
     id: newId(), name: h.name, brand: h.brand,
     category: guessCategory(h.name) ?? 'Импорт OFF',
@@ -78,5 +80,5 @@ export async function saveOffHit(h: OffHit): Promise<string> {
   };
   await db.foods.add(food);
   track('off_saved', {});
-  return food.id;
+  return food;
 }

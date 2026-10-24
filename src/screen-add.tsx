@@ -156,10 +156,19 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
             {(offHits ?? []).map(h => (
               <div key={'off-' + h.id + h.name} className="dd-item" role="button"
                 onClick={async () => {
-                  const id = await saveOffHit(h);
+                  const f = await saveOffHit(h);
                   setOffHits(null);
-                  const saved = (catalog ?? []).find(i => i.id === id);
-                  if (saved) setEditing({ item: saved, presetGrams: undefined, presetTime: slot?.defaultTime ?? nowHM() });
+                  setEditing({
+                    item: {
+                      kind: 'food', id: f.id, name: f.name,
+                      sub: f.brand ? `${f.brand} · свой` : 'свой продукт',
+                      star: false, unit: 'g',
+                      suspicious: kbjuSuspicious(f.kcalPer100g, f.pPer100g, f.fPer100g, f.cPer100g, f.name),
+                      per100: { kcal: f.kcalPer100g, p: f.pPer100g, f: f.fPer100g, c: f.cPer100g },
+                      food: f,
+                    },
+                    presetGrams: undefined, presetTime: slot?.defaultTime ?? nowHM(),
+                  });
                 }}>
                 <div className="min-w-0 flex-1">
                   <div className="nm truncate">{h.name}</div>
