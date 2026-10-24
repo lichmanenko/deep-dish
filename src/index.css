@@ -337,10 +337,7 @@ input[type=time].dd-input { padding: 0 8px; }
   touch-action: pan-y;
 }
 
-/* ── Знак Deep Dish: сегменты светлеют к разрыву ── */
-.dd-logo-s1 { stroke: #4E7EA6; }
-.dd-logo-s2 { stroke: #7FA8C9; }
-.dd-logo-s3 { stroke: #B7D4E8; }
-.dark .dd-logo-s1 { stroke: #5B87A8; }
-.dark .dd-logo-s2 { stroke: #8FB8D8; }
-.dark .dd-logo-s3 { stroke: #CFE4F2; }
+/* ── Знак Deep Dish: сегменты светлеют к разрыву; оттенки — от активной палитры (В., 24.10: лого следует гамме) ── */
+.dd-logo-s1 { stroke: var(--acc); }
+.dd-logo-s2 { stroke: var(--acc2); }
+.dd-logo-s3 { stroke: color-mix(in srgb, var(--acc2) 55%, var(--bg)); }

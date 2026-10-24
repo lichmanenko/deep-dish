@@ -56,15 +56,22 @@ export function NumField({ label, value, onChange, unit, dec }: {
   dec?: boolean; // дробный ввод (вес: 85,6) — клавиатура с разделителем
 }) {
   const [s, setS] = useState(value === undefined ? '' : String(value).replace('.', ','));
+  // внешнее value может прийти после монтирования (профиль/взвешивания грузятся асинхронно) — следуем за ним
+  useEffect(() => {
+    const ext = value === undefined ? '' : String(value).replace('.', ',');
+    if (parseFloat(s.replace(',', '.')) !== (value ?? NaN) || (ext === '' && s !== '')) setS(ext);
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="flex-1 min-w-0">
       <div className="dd-field-label" style={{ marginTop: 0 }}>{label}</div>
       <input
-        className="dd-input dd-num" type="number" inputMode={dec ? 'decimal' : 'numeric'} step={dec ? '0.01' : '1'} value={s}
+        className="dd-input dd-num" type="text" inputMode={dec ? 'decimal' : 'numeric'} value={s}
         onChange={e => {
-          setS(e.target.value);
-          const n = parseFloat(e.target.value.replace(',', '.'));
-          onChange(e.target.value.trim() === '' || Number.isNaN(n) ? undefined : n);
+          // text, не number: браузер превращает value с запятой ('85,6') в пустую строку — вес «пропадал» при загрузке профиля (В., 24.10)
+          const raw = e.target.value.replace(/[^\d.,]/g, '');
+          setS(raw);
+          const n = parseFloat(raw.replace(',', '.'));
+          onChange(raw.trim() === '' || Number.isNaN(n) ? undefined : n);
         }}
       />
       {unit && <div className="text-[0.625rem] mt-1" style={{ color: 'var(--mut)' }}>{unit}</div>}
