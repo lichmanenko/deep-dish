@@ -12,10 +12,12 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [adminTok, setAdminTok] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [hcode, setHcode] = useState<string | null>(null);
+  // код моста: кэшируем — он статичен до «Обновить», копировать можно и вне домашней сети (В., 24.10)
+  const [hcode, setHcode] = useState<string | null>(() => localStorage.getItem('dd-hcode'));
+  const [stale, setStale] = useState(false);
+  const [hErr, setHErr] = useState<'net' | 'old' | null>(null);
 
   async function loadHcode() {
-    // код моста Apple Health: показываем, когда синк настроен
     const st = loadSync();
     if (!st) return;
     try {
@@ -23,9 +25,13 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
         body: '{}', signal: AbortSignal.timeout(8000),
       });
+      if (!r.ok && (r.status === 404 || r.status === 405 || r.status === 400)) { setHErr('old'); return; }
       const j = r.ok ? await r.json() : null;
-      if (j?.code) setHcode(j.code);
-    } catch { /* тихо: заглушка предложит повторить */ }
+      if (j?.code) { setHcode(j.code); localStorage.setItem('dd-hcode', j.code); setHErr(null); setStale(false); }
+    } catch {
+      setHErr('net');
+      if (localStorage.getItem('dd-hcode')) setStale(true); // есть кэш — покажем с пометкой
+    }
   }
 
   useEffect(() => { loadHcode(); }, [sync?.lastOk]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -82,31 +88,34 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
               )}
             </div>
             <div className="py-3" style={{ borderTop: '1px solid var(--tr)' }}>
-              <div className="flex justify-between items-center">
-                <div className="text-sm">Мост Apple Health</div>
-                {hcode && <button className="dd-action" style={{ flex: 'none' }} onClick={() => {
-                  navigator.clipboard?.writeText(hcode).then(() => setMsg('Код моста скопирован — вставь его в шорткат (инструкция в Obsidian).')).catch(() => setMsg('Код моста: ' + hcode));
-                  track('health_code_copy');
-                }}>Скопировать код</button>}
-              </div>
+              <div className="text-sm font-semibold mb-1">Мост Apple Health</div>
               {hcode ? (
-                <div className="flex gap-2 items-center mt-2">
-                  <button className="dd-action" style={{ flex: 'none' }} onClick={async () => {
-                    const st = loadSync(); if (!st) return;
-                    try {
-                      const r = await fetch(st.server.replace(/\/+$/, '') + '/health/code', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
-                        body: JSON.stringify({ reset: true }), signal: AbortSignal.timeout(8000),
-                      });
-                      const j = await r.json();
-                      if (j.code) { setHcode(j.code); setMsg('Код обновлён — старый больше не работает, обнови шорткат.'); }
-                    } catch { setMsg('Не удалось обновить код.'); }
-                    track('health_code_reset');
-                  }}>Обновить</button>
-                </div>
+                <>
+                  <div className="flex gap-2 items-center">
+                    <button className="dd-action" style={{ flex: 1 }} onClick={() => {
+                      navigator.clipboard?.writeText(hcode).then(() => setMsg('Код моста скопирован — вставь его в шорткат.')).catch(() => setMsg('Код моста: ' + hcode));
+                      track('health_code_copy');
+                    }}>Скопировать код</button>
+                    <button className="dd-action" style={{ flex: 1 }} onClick={async () => {
+                      const st = loadSync(); if (!st) return;
+                      try {
+                        const r = await fetch(st.server.replace(/\/+$/, '') + '/health/code', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
+                          body: JSON.stringify({ reset: true }), signal: AbortSignal.timeout(8000),
+                        });
+                        const j = await r.json();
+                        if (j.code) { setHcode(j.code); localStorage.setItem('dd-hcode', j.code); setStale(false); setMsg('Код обновлён — старый больше не работает, обнови шорткат.'); }
+                      } catch { setMsg('Не удалось обновить код — нужен домашний Wi-Fi.'); }
+                      track('health_code_reset');
+                    }}>Обновить</button>
+                  </div>
+                  {stale && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>код из памяти — свежесть проверим в домашней сети</div>}
+                </>
               ) : (
-                <div className="flex gap-2 items-center mt-2 flex-wrap">
-                  <span className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>код недоступен — сервер старой версии (обнови server.py на NAS)</span>
+                <div className="flex gap-2 items-center mt-1 flex-wrap">
+                  <span className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>
+                    {hErr === 'old' ? 'сервер старой версии — обнови server.py на NAS' : 'код моста выдаёт семейный сервер — подключись к домашнему Wi-Fi'}
+                  </span>
                   <button className="dd-action" style={{ flex: 'none' }} onClick={loadHcode}>повторить</button>
                 </div>
               )}
@@ -148,8 +157,8 @@ function MetricsCard() {
   if (!data && !err && !busy) return null;
   if (busy) return <div className="dd-card p-4 mt-4 text-center text-sm" style={{ color: 'var(--mut)' }}>Собираю метрики…</div>;
   if (err) return (
-    <div className="dd-card p-4 mt-4 text-center text-sm" style={{ color: 'var(--warn)' }}>
-      Витрина не открылась: {err}
+    <div className="dd-card p-4 mt-4 text-center text-sm" style={{ color: 'var(--mut)' }}>
+      Сейчас витрина недоступна — она живёт на семейном сервере, вернись в домашнюю сеть.
       <button className="dd-link-btn" style={{ display: 'block', margin: '6px auto 0' }} onClick={load}>повторить</button>
     </div>
   );

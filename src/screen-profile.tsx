@@ -92,13 +92,14 @@ export function ProfileScreen() {
         }} />
 
       <div className="dd-card p-4 mb-4">
-        <div className="dd-field-label" style={{ marginTop: 0 }}>О тебе</div>
+        <div className="dd-field-label" style={{ marginTop: 0 }}>О себе</div>
         <Segmented value={pr.gender} onChange={v => set({ gender: v })} options={[{ value: 'male', label: '♂ мужской' }, { value: 'female', label: '♀ женский' }]} />
 
         <div className="dd-input-row mt-2">
           <NumField label="возраст" value={pr.age} onChange={n => set({ age: n ?? 0 })} />
           <NumField label="рост, см" value={pr.heightCm} onChange={n => set({ heightCm: n ?? 0 })} />
-          <NumField label="вес, кг" value={pr.weightKg} onChange={n => set({ weightKg: n })} dec />
+          {/* показываем последнее взвешивание (журнал), а не устаревший вес профиля (В., 24.10) */}
+          <NumField label="вес, кг" value={weights.length ? weights[weights.length - 1].kg : pr.weightKg} onChange={n => set({ weightKg: n })} dec />
         </div>
         <div className="text-[0.625rem] mt-2" style={{ color: 'var(--mut)' }}>текущий вес — точка отсчёта нормы; изменение веса записывается как взвешивание</div>
       </div>
