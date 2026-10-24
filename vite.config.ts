@@ -19,13 +19,14 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       manifest: {
+        id: '/',
+        start_url: './',
         name: 'Deep Dish — дневник питания',
         short_name: 'Deep Dish',
         description: 'Домашний трекер питания и веса. Работает офлайн.',
         lang: 'ru',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '.',
         background_color: '#14171B',
         theme_color: '#14171B',
         icons: [

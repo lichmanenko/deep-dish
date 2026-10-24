@@ -63,12 +63,41 @@ export async function savePortions(kind: 'food' | 'recipe', id: string, portions
   else await db.recipes.update(id, { portions, updatedAt: now });
 }
 
+/** ограниченное расстояние Левенштейна (экспорт — для тестов): опечатки в поиске («Карустный» → «Капустный»), жена В. 18.10 */
+export function levWithin(a: string, b: string, max: number): boolean {
+  if (Math.abs(a.length - b.length) > max) return false;
+  const m = a.length, n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      best = Math.min(best, cur[j]);
+    }
+    if (best > max) return false;
+    prev = cur;
+  }
+  return prev[n] <= max;
+}
+
 export async function getCatalog(query: string): Promise<CatalogItem[]> {
   const q = query.trim().toLowerCase();
   const isBarcode = /^\d{8,13}$/.test(q);
-  const foods = (await db.foods.filter(f => !f.deletedAt && !f.hidden).toArray()).filter(f =>
+  const all = await db.foods.filter(f => !f.deletedAt && !f.hidden).toArray();
+  let foods = all.filter(f =>
     !q || normE(f.name).includes(normE(q)) || normE(f.brand ?? '').includes(normE(q))
     || (isBarcode && (f.barcode ?? '').includes(q)));
+  // нечёткий тыл: точных нет — ищем с опечатками (только по достаточно длинным словам)
+  if (q && !isBarcode && foods.length === 0) {
+    const nq = normE(q);
+    if (nq.length >= 5) {
+      foods = all.filter(f => {
+        const n = normE(f.name);
+        return n.length >= 5 && (levWithin(n, nq, 2) || (f.brand && levWithin(normE(f.brand), nq, 2)));
+      });
+    }
+  }
   const recipes = (await db.recipes.filter(r => !r.deletedAt).toArray()).filter(r =>
     !q || r.name.toLowerCase().includes(q));
   const items: CatalogItem[] = [

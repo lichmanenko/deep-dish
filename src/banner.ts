@@ -54,13 +54,24 @@ async function flagEntries(cats: string[]): Promise<Array<{ date: string; hour: 
   return out;
 }
 
-/** часовые окна, где флаг-еда встречалась ≥3 раз за 60 дней (по каждому часу) */
+/**
+ * Часовые окна, где флаг-еда встречалась ≥3 раз за 60 дней минимум в 3 РАЗНЫХ днях.
+ * Порог «разных дней» (В., 22.10): у новой истории (пара дней ведения) случайные
+ * повторы вроде «кофе после обеда» не должны сразу объявляться слабым временем.
+ */
 export async function detectDangerWindows(): Promise<Array<{ hour: number; count: number }>> {
   const flags = loadFlags();
   const es = await flagEntries(flags.cats);
-  const byHour = new Map<number, number>();
-  for (const e of es) byHour.set(e.hour, (byHour.get(e.hour) ?? 0) + 1);
-  return [...byHour.entries()].filter(([, n]) => n >= 3).map(([hour, count]) => ({ hour, count })).sort((a, b) => b.count - a.count);
+  const byHour = new Map<number, { count: number; days: Set<string> }>();
+  for (const e of es) {
+    const cur = byHour.get(e.hour) ?? { count: 0, days: new Set<string>() };
+    cur.count++; cur.days.add(e.date);
+    byHour.set(e.hour, cur);
+  }
+  return [...byHour.entries()]
+    .filter(([, v]) => v.count >= 3 && v.days.size >= 3)
+    .map(([hour, v]) => ({ hour, count: v.count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 const PRAISE_BOLD = [
