@@ -32,6 +32,7 @@ export function ProfileScreen() {
   // мотивационные баннеры (перенос из Настроек, В. 19.10)
   const [flags, setFlags] = useState<FlagSettings>(() => loadFlags());
   const [flagsOpen, setFlagsOpen] = useState(false);
+  const [achOpen, setAchOpen] = useState(false);
   const catsList = useLiveQuery(async () =>
     [...new Set((await db.foods.filter(f => !f.deletedAt).toArray()).map(f => f.category))].filter(c => !HIDDEN_CATS.includes(c)).sort(), [], [] as string[]);
   const [baseline, setBaseline] = useState('');
@@ -185,7 +186,7 @@ export function ProfileScreen() {
           )}
         </div>
 
-        <AchievementsRow />
+        <AchievementsRow onOpen={() => setAchOpen(true)} />
       </div>
 
       <div className="dd-card p-4 mb-4">
@@ -239,6 +240,15 @@ export function ProfileScreen() {
         </div>
       )}
       <button className="dd-action strong" disabled={!dirty} onClick={save} style={{ visibility: dirty ? 'hidden' : 'visible' }}>{saved ? '✓ Сохранено' : 'Сохранить'}</button>
+
+      {/* шит доски достижений — ВНЕ карточек: стеклянный фон ломает position:fixed (разбор №2, В., 25.10) */}
+      <Sheet open={achOpen} onClose={() => setAchOpen(false)} title="Достижения">
+        <AchievementsList />
+        <p className="text-[0.625rem] mt-3 text-center" style={{ color: 'var(--mut)' }}>
+          считаются только живые записи приложения; пауза 90+ дней начинает заново
+        </p>
+      </Sheet>
+
     </div>
   );
 }
@@ -343,45 +353,55 @@ function WhyNorma({ open, onClose, norma, fallback }: {
 }
 
 
-function AchievementsRow() {
-  const [open, setOpen] = useState(false);
+function AchievementsRow({ onOpen }: { onOpen: () => void }) {
   const mine = useLiveQuery(() => db.achievements.filter(a => a.userId === 'local' && !a.deletedAt).toArray(), [], []);
   const byCode = new Map((mine ?? []).map(a => [a.code, a] as const));
   const count = byCode.size;
+  const last = (mine ?? []).slice().sort((a, b) => b.unlockedAt - a.unlockedAt)[0];
+  const lastDef = last ? ACH.find(a => a.code === last.code) : undefined;
+  const recent = (mine ?? []).slice().sort((a, b) => b.unlockedAt - a.unlockedAt).slice(0, 6)
+    .map(a => ACH.find(d => d.code === a.code)).filter(Boolean);
+  return (
+    <div style={{ borderTop: '1px solid var(--tr)', marginTop: 10, paddingTop: 10 }}>
+      <div className="flex justify-between items-center">
+        <span className="text-sm font-semibold">Достижения</span>
+        <button className="dd-link-btn" style={{ color: 'var(--mut)', fontSize: '0.6875rem', fontWeight: 500 }}
+          onClick={onOpen}>{count} из {ACH.length} →</button>
+      </div>
+      {recent.length > 0 && (
+        <div className="grid grid-cols-6 gap-1 mt-2">
+          {recent.map(d => (
+            <div key={d!.code} className="text-center" title={d!.name} style={{ fontSize: '1.5rem', lineHeight: 1.5 }}>{d!.emoji}</div>
+          ))}
+        </div>
+      )}
+      <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>
+        {lastDef ? <>последняя: <b style={{ color: 'var(--acc-fg)' }}>{lastDef.emoji} {lastDef.name}</b> — {lastDef.desc}</> : 'здесь появятся награды за живой дневник'}
+      </div>
+    </div>
+  );
+}
+
+function AchievementsList() {
+  const mine = useLiveQuery(() => db.achievements.filter(a => a.userId === 'local' && !a.deletedAt).toArray(), [], []);
+  const byCode = new Map((mine ?? []).map(a => [a.code, a] as const));
   return (
     <>
-      <div className="flex justify-between items-center" style={{ minHeight: 44, borderTop: '1px solid var(--tr)', marginTop: 6, paddingTop: 6 }}>
-        <span className="text-sm">Достижения</span>
-        <button className="dd-link-btn" style={{ color: 'var(--mut)', fontSize: '0.6875rem', fontWeight: 500 }}
-          onClick={() => setOpen(true)}>{count} из {ACH.length} →</button>
-      </div>
-      <div className="grid grid-cols-9 gap-1">
-        {ACH.filter(a => byCode.has(a.code)).slice(-9).reverse().map(a => (
-          <div key={a.code} className="text-center" title={a.name} style={{ fontSize: '1.0625rem', lineHeight: 1.4 }}>{a.emoji}</div>
-        ))}
-      </div>
-
-      {/* Sheet вне dd-card: fixed ломается о backdrop-filter карточки (В., 25.10: панель «висла внизу») */}
-      <Sheet open={open} onClose={() => setOpen(false)} title="Достижения">
-        {ACH.map(a => {
-          const got = byCode.get(a.code);
-          return (
-            <div key={a.code} className="flex items-center gap-3" style={{ minHeight: 52, opacity: got ? 1 : .45 }}>
-              <span style={{ fontSize: '1.5rem', flex: 'none', filter: got ? undefined : 'grayscale(1)' }}>{a.emoji}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[0.84375rem] font-semibold">{a.name}</div>
-                <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>{got ? a.desc : a.hint}</div>
-              </div>
-              {got && <span className="dd-num text-[0.625rem] flex-none" style={{ color: 'var(--mut)' }}>
-                {new Date(got.unlockedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-              </span>}
+      {ACH.map(a => {
+        const got = byCode.get(a.code);
+        return (
+          <div key={a.code} className="flex items-center gap-3" style={{ minHeight: 52, opacity: got ? 1 : .45 }}>
+            <span style={{ fontSize: '1.5rem', flex: 'none', filter: got ? undefined : 'grayscale(1)' }}>{a.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[0.84375rem] font-semibold">{a.name}</div>
+              <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>{got ? a.desc : a.hint}</div>
             </div>
-          );
-        })}
-        <p className="text-[0.625rem] mt-3 text-center" style={{ color: 'var(--mut)' }}>
-          после 90 дней без записей достижения начинаются заново
-        </p>
-      </Sheet>
+            {got && <span className="dd-num text-[0.625rem] flex-none" style={{ color: 'var(--mut)' }}>
+              {new Date(got.unlockedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+            </span>}
+          </div>
+        );
+      })}
     </>
   );
 }

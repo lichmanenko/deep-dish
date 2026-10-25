@@ -170,29 +170,8 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
       </div>
 
       <Slide dir={dir}>
-        {(slots ?? []).map(slot => {
-          const es = entries.filter(e => e.slotId === slot.id);
-          const sum = es.reduce((s, e) => s + e.snapshot.kcal, 0);
-          return (
-            <div key={slot.id} className="dd-card px-4 pt-4 pb-3 mb-2.5" onClick={() => es.length === 0 && onAdd(slot)}>
-              <div className="flex justify-between items-baseline mb-1">
-                <button className="text-[0.9375rem] font-semibold flex items-baseline gap-2 dd-slot-link"
-                  onClick={e => { e.stopPropagation(); setSlotInfo(slot); }}>
-                  <span>{slot.emoji}</span>{slot.name}
-                </button>
-                <div className="text-xs dd-num flex items-center" style={{ color: 'var(--mut)' }}>
-                  {es.length
-                    ? <span className="dd-num font-bold" style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
-                    : (marks ?? []).some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : 'ничего'}
-                </div>
-              </div>
-              {es.map(e => (
-                <EntryLine key={e.id} e={e} slot={slot} showTime={showTime} onClick={() => setEditEntry(e)} />
-              ))}
-              <div className="dd-slot-add" onClick={() => onAdd(slot)}>＋ добавить</div>
-            </div>
-          );
-        })}
+        {(slots ?? []).map(slot => { const slot2 = slot; const es2 = entries.filter(e => e.slotId === slot2.id); return <SlotCard key={slot2.id} slot={slot2} entries={es2} marks={marks ?? []} date={date} showTime={showTime}
+          onAdd={onAdd} onOpenInfo={setSlotInfo} onEditEntry={setEditEntry} />; })}
       </Slide>
 
       {fact && (
@@ -291,7 +270,12 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
 }) {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (slot) setName(`мой ${slot.name.toLowerCase()}`); }, [slot?.id]);
+  useEffect(() => {
+    if (slot) {
+      setName(`мой ${slot.name.toLowerCase()}`);
+      if (open && slot.id !== 'slot-snack') track('balance_open', { slot: slot.id });
+    }
+  }, [slot?.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!slot) return null;
   const t = entries.reduce((s, e) => ({ kcal: s.kcal + e.snapshot.kcal, p: s.p + e.snapshot.p, f: s.f + e.snapshot.f, c: s.c + e.snapshot.c }), { kcal: 0, p: 0, f: 0, c: 0 });
   const kc = { p: t.p * 4, f: t.f * 9, c: t.c * 4 };
@@ -306,17 +290,50 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
     if (Math.abs(share.c - pct.c / 100) > 0.12) verdicts.push(share.c > pct.c / 100 ? `углеводов больше плана (${Math.round(share.c * 100)}% против ${pct.c}%)` : `углеводов меньше плана (${Math.round(share.c * 100)}% против ${pct.c}%)`);
     if (!verdicts.length) verdicts.push('по белкам-жирам-углеводам — как по плану');
   }
+  const isSnack = slot.id === 'slot-snack'; // перекус: сбор всего «остального» — баланс и сохранение не нужны (В., 24.10)
+
+  // виновники перекоса: для каждого макро сверх плана — топ-2 блюда по вкладу (В., 24.10)
+  const dotsByEntry = new Map<string, Array<'p' | 'f' | 'c'>>();
+  if (t.kcal > 0) {
+    (['p', 'f', 'c'] as const).forEach(m => {
+      if (share[m] - pct[m] / 100 > 0.12 && t[m] > 0) {
+        const total = t[m];
+        [...entries].sort((a, b) => b.snapshot[m] - a.snapshot[m]).slice(0, 2)
+          .filter(e => e.snapshot[m] / total >= 0.25)
+          .forEach(e => dotsByEntry.set(e.id, [...(dotsByEntry.get(e.id) ?? []), m]));
+      }
+    });
+  }
+
   return (
     <Sheet open={open} onClose={onClose} title={`${slot.emoji} ${slot.name}`}
       note={`${entries.length} поз. · ${fmt(t.kcal)} ккал · Б ${fmt(t.p)} · Ж ${fmt(t.f)} · У ${fmt(t.c)}`}>
       <div className="mb-3">
         {entries.map(e => (
-          <SlotLine key={e.id} e={e} />
+          <SlotLine key={e.id} e={e} dots={dotsByEntry.get(e.id)} />
         ))}
       </div>
-      <div className="text-[0.78125rem] mb-4" style={{ color: 'var(--mut)' }}>
-            Сбалансированность: {verdicts.join('; ')}.
-      </div>
+
+      {!isSnack && t.kcal > 0 && (
+        <div className="dd-card p-3 mb-4" style={{ background: 'var(--veil)', boxShadow: 'none' }}>
+          <div className="dd-field-label" style={{ marginTop: 0 }}>Баланс</div>
+          <div className="text-[0.78125rem]" style={{ color: 'var(--mut)' }}>
+            {verdicts.join('; ')}.
+          </div>
+          {dotsByEntry.size > 0 && (() => {
+            const labels: Record<'p' | 'f' | 'c', string> = { p: 'белки', f: 'жиры', c: 'углеводы' };
+            const used = [...new Set([...dotsByEntry.values()].flat())];
+            return (
+              <div className="text-[0.6875rem] mt-1.5" style={{ color: 'var(--tx)' }}>
+                основной вклад: {used.map(m => (
+                  <span key={m} style={{ color: MACRO_COLOR[m] }}>●</span>
+                ))} {used.map(m => labels[m]).join(', ')} — точки у блюд выше
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {entries.length === 0 && (
         <button className="dd-action" style={{ width: '100%', color: marked ? 'var(--mut)' : 'var(--warn)' }}
           onClick={() => toggleSlotMark(date, slot.id)}>
@@ -324,14 +341,14 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
         </button>
       )}
 
-      {entries.length > 0 && (
+      {entries.length > 0 && !isSnack && (
       <div className="dd-input-row items-end">
         <div className="flex-1 min-w-0">
           <input className="dd-input" value={name} onChange={e => setName(e.target.value)} placeholder="мой завтрак" />
         </div>
         <button className="dd-action strong" style={{ flex: 'none' }} disabled={saving || entries.length === 0}
           onClick={async () => { setSaving(true); await onSave(name.trim() || `мой ${slot.name.toLowerCase()}`); setSaving(false); }}>
-          {saving ? 'Сохраняю…' : 'Сохранить приём'}
+          {saving ? 'Сохраняю…' : 'Сохранить приём пищи'}
         </button>
       </div>
       )}
@@ -339,9 +356,66 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
   );
 }
 
+/** Карточка приёма на «Сегодня» (v0.7.7): сворачивание по механике В. —
+ *  тап по названию открывает состав, остальная шапка и стрелка сворачивают;
+ *  состояние помнится по приёму; пустые приёмы не сворачиваются. */
+function SlotCard({ slot, entries, marks, date, showTime, onAdd, onOpenInfo, onEditEntry }: {
+  slot: Slot; entries: Entry[]; marks: Array<{ date: string; slotId: string }>; date: string;
+  showTime: 'snacks' | 'all';
+  onAdd: (slot: Slot | null) => void; onOpenInfo: (s: Slot) => void; onEditEntry: (e: Entry) => void;
+}) {
+  const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem('dd-slot-collapse') ?? '{}'); } catch { return {}; }
+  });
+  const hasEntries = entries.length > 0;
+  const collapsed = hasEntries && !!collapsedMap[slot.id];
+  const toggle = () => {
+    if (!hasEntries) return;
+    const next = { ...collapsedMap, [slot.id]: !collapsed };
+    setCollapsedMap(next);
+    localStorage.setItem('dd-slot-collapse', JSON.stringify(next));
+    track('slot_collapse', { slot: slot.id, on: !collapsed });
+  };
+  const sum = entries.reduce((s, e) => s + e.snapshot.kcal, 0);
+  return (
+    <div className="dd-card px-4 pt-4 pb-3 mb-2.5" onClick={() => !hasEntries && onAdd(slot)}>
+      <div className="flex justify-between items-baseline mb-1 cursor-pointer" onClick={toggle}>
+        <button className="text-[0.9375rem] font-semibold flex items-baseline gap-2 dd-slot-link"
+          onClick={e => { e.stopPropagation(); onOpenInfo(slot); }}>
+          <span>{slot.emoji}</span>{slot.name}
+        </button>
+        <div className="text-xs dd-num flex items-center gap-1" style={{ color: 'var(--mut)' }}>
+          {hasEntries
+            ? <>
+                <span className="dd-num font-bold" style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
+                {collapsed && <span>· {entries.length}</span>}
+              </>
+            : (marks.some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : 'ничего')}
+          {hasEntries && <span style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform .2s' }}>⌄</span>}
+        </div>
+      </div>
+      {!collapsed && (
+        <>
+          {entries.map(e => (
+            <EntryLine key={e.id} e={e} slot={slot} showTime={showTime} onClick={() => onEditEntry(e)} />
+          ))}
+          <div className="dd-slot-add" onClick={e => { e.stopPropagation(); track('slot_add_tap', { slot: slot.id }); onAdd(slot); }}>＋ добавить</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function profile0(macroPct?: { p: number; f: number; c: number }) { return macroPct ?? { p: 25, f: 30, c: 45 }; }
 
-function SlotLine({ e }: { e: Entry }) {
+const MACRO_DOT: Record<'p' | 'f' | 'c', string> = {
+  p: '●', f: '●', c: '●',
+};
+const MACRO_COLOR: Record<'p' | 'f' | 'c', string> = {
+  p: 'var(--acc)', f: 'var(--acc2)', c: 'color-mix(in srgb, var(--acc2) 45%, var(--bg))',
+}; // оттенки одного цвета — как сегменты кольца (канон DESIGN.md, не светофор)
+
+function SlotLine({ e, dots }: { e: Entry; dots?: Array<'p' | 'f' | 'c'> }) {
   const [name, setName] = useState('');
   const [isPc, setIsPc] = useState(false);
   useEffect(() => {
@@ -354,7 +428,12 @@ function SlotLine({ e }: { e: Entry }) {
   }, [e]);
   return (
     <div className="flex justify-between items-baseline gap-2 text-[0.8125rem] py-1" style={{ borderBottom: '1px solid var(--tr)' }}>
-      <span className="flex-1 min-w-0 truncate">{name}</span>
+      <span className="flex-1 min-w-0 truncate">
+        {!!dots?.length && (
+          <span className="mr-1" aria-label="виновник перекоса">{dots.map(m => <span key={m} style={{ color: MACRO_COLOR[m] }}>{MACRO_DOT[m]}</span>)}&nbsp;</span>
+        )}
+        {name}
+      </span>
       <span className="flex-none" style={{ color: 'var(--mut)' }}>
         {isPc ? `${(Math.round((e.grams / 100) * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} шт` : `${fmt(e.grams)} г`}
       </span>

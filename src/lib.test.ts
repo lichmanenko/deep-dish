@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS, matchTokens } from './lib';
 import { windowsFromEntries } from './banner';
 import { pickFact, markFactClosed } from './facts';
+import { lastSegmentStart } from './achievements';
 
 // calcNorma/weightTrend/goalProgress тянут Dexie (IndexedDB) — вынесенную чистую логику
 // тестируем через пере-реализацию контрактов, зафиксированных в SPEC; при расхождении — тест красный.
@@ -228,5 +229,39 @@ describe('поиск по словам (В., 25.10: «белый хлеб» не
   it('одно слово и ё работают как раньше', () => {
     expect(matchTokens('Мёд цветочный', 'мед')).toBe(true);
     expect(matchTokens('Сыр Гаудетте', 'ГАУД')).toBe(true);
+  });
+});
+
+describe('стемминг и стоп-слова поиска (0.7.7)', () => {
+  it('падежи и прилагательные находят основу', () => {
+    expect(matchTokens('Хлеб белый пшеничный', 'хлеба')).toBe(true);          // ед.ч. родительный
+    expect(matchTokens('Каша молочная', 'молочная')).toBe(true);                // прилагательное формы
+    expect(matchTokens('Сырники', 'сырник')).toBe(true);
+    expect(matchTokens('Сырники творожные', 'творожная')).toBe(true);
+  });
+  it('предлоги не обязательны', () => {
+    expect(matchTokens('Салат из свежей капусты', 'салат капуста')).toBe(true);
+    expect(matchTokens('Салат из свежей капусты', 'салат из капусты')).toBe(true);
+  });
+  it('короткие слова не искажаются', () => {
+    expect(matchTokens('Сыр Гаудетте', 'сыр')).toBe(true);
+    expect(matchTokens('Чай зелёный', 'зеленый')).toBe(true);
+  });
+});
+
+
+describe('сегмент непрерывности достижений (разбор В. №2)', () => {
+  const d = (iso: string, off: number) => new Date(new Date(iso).getTime() + off * 86400000).toISOString().slice(0, 10);
+  it('внутренняя пауза 90+ дней начинает новый сегмент', () => {
+    const days = ['2026-01-01', d('2026-01-01', 1), d('2026-01-01', 2), d('2026-01-01', 100)];
+    expect(lastSegmentStart(days)).toBe(d('2026-01-01', 100));
+  });
+  it('без пауз сегмент от первой записи', () => {
+    const days = ['2026-01-01', d('2026-01-01', 1), d('2026-01-01', 5)];
+    expect(lastSegmentStart(days)).toBe('2026-01-01');
+  });
+  it('несколько пауз — берётся последняя', () => {
+    const days = ['2026-01-01', d('2026-01-01', 95), d('2026-01-01', 96), d('2026-01-01', 300)];
+    expect(lastSegmentStart(days)).toBe(d('2026-01-01', 300));
   });
 });
