@@ -2,6 +2,8 @@
 # Спецификация — SPEC.md §4–5: LWW по updatedAt, tombstone-удаления (очистка >90 дней),
 # дневники приватные (фильтр по userId), каталог общий (isPublic), события метрик попутно.
 import json
+import logging
+import logging.handlers
 import os
 import secrets
 import sqlite3
@@ -18,12 +20,52 @@ from pydantic import BaseModel
 DB_PATH = os.environ.get('DD_DB', os.path.join(os.path.dirname(__file__), 'data', 'deepdish.db'))
 TOMBSTONE_TTL_DAYS = 90
 
+# v0.7.4: структурные логи в файл с ротацией (диагностика NAS вслепую стала невозможной)
+os.makedirs(os.path.join(os.path.dirname(__file__), 'data'), exist_ok=True)
+log = logging.getLogger('deepdish')
+log.setLevel(logging.INFO)
+_log_handler = logging.handlers.RotatingFileHandler(
+    os.path.join(os.path.dirname(__file__), 'data', 'server.log'),
+    maxBytes=1_000_000, backupCount=3, encoding='utf-8')
+_log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+log.addHandler(_log_handler)
+
+# v0.7.4: авто-бэкап при синках — VACUUM INTO-снапшот без WAL-хвостов, ротация 30 копий
+BACKUP_DIR = os.path.join(os.path.dirname(__file__), 'data', 'backups')
+BACKUP_KEEP = 30
+BACKUP_MIN_INTERVAL_S = 6 * 3600  # не чаще раза в 6 часов
+
+
+def maybe_backup() -> None:
+    marker = os.path.join(BACKUP_DIR, '.last')
+    now = time.time()
+    try:
+        if os.path.exists(marker) and now - os.path.getmtime(marker) < BACKUP_MIN_INTERVAL_S:
+            return
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        dest = os.path.join(BACKUP_DIR, f'deepdish-{stamp}.db')
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            conn.execute('VACUUM INTO ?', (dest,))
+        finally:
+            conn.close()
+        open(marker, 'w').close()
+        os.utime(marker)
+        old = sorted(f for f in os.listdir(BACKUP_DIR) if f.startswith('deepdish-') and f.endswith('.db'))
+        for f in old[:-BACKUP_KEEP]:
+            os.remove(os.path.join(BACKUP_DIR, f))
+        log.info('backup saved: %s (total %d)', dest, min(len(old), BACKUP_KEEP))
+    except Exception as e:  # бэкап не должен ронять синк
+        log.warning('backup failed: %s', e)
+
+
 # kinds: общий каталог vs личные данные
 PUBLIC_KINDS = {'foods', 'recipes'}
 PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'profiles'}
 ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS
 
-app = FastAPI(title='Deep Dish sync', version='0.3.0')
+app = FastAPI(title='Deep Dish sync', version='0.4.0')
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
@@ -121,6 +163,7 @@ def register(payload: RegisterIn) -> dict[str, Any]:
                 raise HTTPException(403, 'adminToken не опознан')
         c.execute('INSERT INTO users (userId, nickname, token, role, createdAt) VALUES (?,?,?,?,?)',
                   (user_id, nickname, token, role, now_ms()))
+    log.info('register nick=%s role=%s', nickname, role)
     return {'userId': user_id, 'token': token, 'role': role}
 
 
@@ -377,6 +420,7 @@ def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]
                 continue  # сами мостовые записи этой пачки
             if json.loads(r['body']).get('date') in dates:
                 c.execute('UPDATE items SET deleted = ? WHERE kind = ? AND id = ?', (now, 'weightLogs', r['id']))
+    log.info('health_weight user=%s nick=%s applied=%d', u['userId'], u['nickname'], applied)
     return {'ok': True, 'applied': applied}
 
 
@@ -475,4 +519,8 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
     # Д2(ревью): курсор клиента — последняя фактически отданная запись (не текущее время сервера),
     # иначе хвост за LIMIT 5000 теряется навсегда
     max_updated = out[-1]['updated'] if out else None
+    if applied or payload.events:
+        log.info('sync user=%s nick=%s applied=%d rejected=%d out=%d events=%d',
+                 uid, user['nickname'], applied, rejected, len(out), len(payload.events))
+    maybe_backup()
     return {'changes': out, 'serverTime': server_now, 'maxUpdated': max_updated, 'applied': applied, 'rejected': rejected}

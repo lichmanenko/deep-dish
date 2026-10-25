@@ -252,7 +252,8 @@ input[type=time].dd-input { padding: 0 8px; }
 }
 .dd-seg-btn.on { background: var(--veil); color: var(--acc-fg); font-weight: 700; }
 .dd-ingr-scroll { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
-.dd-searchwrap { position: relative; }
+.dd-searchwrap { position: relative; display: flex; align-items: stretch; gap: 8px; }
+.dd-searchwrap .dd-input { flex: 1 1 auto; min-width: 0; }
 .dd-searchdot {
   position: absolute; right: 30px; top: 50%; transform: translateY(-50%);
   width: 7px; height: 7px; border-radius: 50%; background: var(--acc);
@@ -265,8 +266,7 @@ input[type=time].dd-input { padding: 0 8px; }
   color: var(--mut); font-size: 0.875rem; cursor: pointer;
 }
 .dd-scanbtn {
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  width: 34px; height: 34px; border-radius: 11px; border: none; background: var(--veil);
+  position: static; flex: none; width: 3rem; height: auto; border-radius: 12px; border: none; background: var(--veil);
   color: var(--acc-fg); display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .dd-scanbtn:active { background: var(--tr); }

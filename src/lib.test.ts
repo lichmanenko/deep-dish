@@ -2,7 +2,8 @@
 // Запуск: npm test. Пояснение В. (11.10, ревью В2): это страховка от числовых регрессий —
 // Д1 «вес из будущего» нашёл бы именно такой тест.
 import { describe, it, expect } from 'vitest';
-import { kbjuSuspicious, normE } from './lib';
+import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS } from './lib';
+import { windowsFromEntries } from './banner';
 
 // calcNorma/weightTrend/goalProgress тянут Dexie (IndexedDB) — вынесенную чистую логику
 // тестируем через пере-реализацию контрактов, зафиксированных в SPEC; при расхождении — тест красный.
@@ -118,5 +119,44 @@ describe('levWithin — нечёткий поиск', () => {
     const { levWithin } = await import('./store');
     expect(levWithin('молоко', 'кефир', 2)).toBe(false);
     expect(levWithin('молоко', 'молокоперваяобработкаультрапастеризованное', 2)).toBe(false);
+  });
+});
+
+// ── v0.7.4: регрессии последующих релизов ──
+
+describe('окна срыва (баннеры): ≥3 событий из ≥3 РАЗНЫХ дней', () => {
+  // фидбек В. 24.10: жена видела баннер по капучино двух дней — 3 события 2 дней не окно
+  const w = (es: Array<[string, number]>) => windowsFromEntries(es.map(([date, hour]) => ({ date, hour })));
+  it('3 события одного дня — не окно', () => {
+    expect(w([['2026-10-13', 13], ['2026-10-13', 13], ['2026-10-13', 13]])).toEqual([]);
+  });
+  it('3 события двух дней — не окно (регресс «баннеров жены»)', () => {
+    expect(w([['2026-10-13', 13], ['2026-10-17', 13], ['2026-10-17', 13]])).toEqual([]);
+  });
+  it('3 события трёх дней — окно', () => {
+    expect(w([['2026-10-13', 13], ['2026-10-15', 13], ['2026-10-17', 13]])).toEqual([{ hour: 13, count: 3 }]);
+  });
+  it('часы не смешиваются', () => {
+    expect(w([['2026-10-13', 13], ['2026-10-14', 14], ['2026-10-15', 15]])).toEqual([]);
+  });
+});
+
+describe('категории-суррогаты (v0.7.3)', () => {
+  it('служебные категории скрыты от пользователя', () => {
+    expect(HIDDEN_CATS).toContain('Импорт OFF');
+    expect(HIDDEN_CATS).toContain('Импорт MFP');
+  });
+  it('незнакомое слово → null (вызывающий код кладёт «Прочее»)', () => {
+    expect(guessCategory('Краказябра синяя')).toBeNull();
+  });
+});
+
+describe('арифметика рецептов (контракт SPEC)', () => {
+  const per100 = (kcal: number, grams: number) => Math.round(kcal / grams * 1000) / 10;
+  it('два ингредиента по 100 г и 150 ккал/100 г → 150 ккал/100 г', () => {
+    expect(per100(150 + 150, 200)).toBe(150);
+  });
+  it('ошибка ×100 (баг v0.5.2) поймана бы: 300 ккал на 200 г — это 150, не 1.5', () => {
+    expect(per100(300, 200)).not.toBeLessThan(10);
   });
 });
