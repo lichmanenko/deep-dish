@@ -80,6 +80,15 @@ export function saveSettings(s: DeviceSettings) { localStorage.setItem('dd-setti
 /** нормализация поиска: ё -> е, нижний регистр */
 export const normE = (v: string) => v.toLowerCase().replace(/ё/g, 'е');
 
+/** Поиск каталога по словам: каждое слово запроса должно найтись в строке, в любом порядке
+ *  (В., 25.10: «белый хлеб» не находил «Хлеб белый» — подстрока придирчива к порядку слов). */
+export function matchTokens(hay: string, q: string): boolean {
+  const toks = normE(q).split(/\s+/).filter(Boolean);
+  if (!toks.length) return true;
+  const h = normE(hay);
+  return toks.every(t => h.includes(t));
+}
+
 export const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
 export const MONTHS_NOM = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
 export const WD_SHORT = ['вс','пн','вт','ср','чт','пт','сб'];

@@ -184,9 +184,9 @@ export function ProfileScreen() {
             </div>
           )}
         </div>
-      </div>
 
-      <AchievementsCard />
+        <AchievementsRow />
+      </div>
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Распределение БЖУ</div>
@@ -343,26 +343,25 @@ function WhyNorma({ open, onClose, norma, fallback }: {
 }
 
 
-function AchievementsCard() {
+function AchievementsRow() {
   const [open, setOpen] = useState(false);
   const mine = useLiveQuery(() => db.achievements.filter(a => a.userId === 'local' && !a.deletedAt).toArray(), [], []);
   const byCode = new Map((mine ?? []).map(a => [a.code, a] as const));
   const count = byCode.size;
   return (
-    <div className="dd-card p-4 mb-4">
-      <div className="flex justify-between items-center">
-        <div className="dd-field-label" style={{ marginTop: 0 }}>Достижения</div>
-        <button className="dd-link-btn" onClick={() => setOpen(true)}>все ({count}/{ACH.length}) →</button>
+    <>
+      <div className="flex justify-between items-center" style={{ minHeight: 44, borderTop: '1px solid var(--tr)', marginTop: 6, paddingTop: 6 }}>
+        <span className="text-sm">Достижения</span>
+        <button className="dd-link-btn" style={{ color: 'var(--mut)', fontSize: '0.6875rem', fontWeight: 500 }}
+          onClick={() => setOpen(true)}>{count} из {ACH.length} →</button>
       </div>
-      <div className="grid grid-cols-6 gap-1.5 mt-1">
-        {ACH.filter(a => byCode.has(a.code)).slice(-12).reverse().map(a => (
-          <div key={a.code} className="text-center" title={a.name}>
-            <div style={{ fontSize: '1.375rem', lineHeight: 1.2 }}>{a.emoji}</div>
-          </div>
+      <div className="grid grid-cols-9 gap-1">
+        {ACH.filter(a => byCode.has(a.code)).slice(-9).reverse().map(a => (
+          <div key={a.code} className="text-center" title={a.name} style={{ fontSize: '1.0625rem', lineHeight: 1.4 }}>{a.emoji}</div>
         ))}
       </div>
-      {count === 0 && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>здесь появятся награды за привычку — первая уже близко</div>}
 
+      {/* Sheet вне dd-card: fixed ломается о backdrop-filter карточки (В., 25.10: панель «висла внизу») */}
       <Sheet open={open} onClose={() => setOpen(false)} title="Достижения">
         {ACH.map(a => {
           const got = byCode.get(a.code);
@@ -379,7 +378,10 @@ function AchievementsCard() {
             </div>
           );
         })}
+        <p className="text-[0.625rem] mt-3 text-center" style={{ color: 'var(--mut)' }}>
+          после 90 дней без записей достижения начинаются заново
+        </p>
       </Sheet>
-    </div>
+    </>
   );
 }

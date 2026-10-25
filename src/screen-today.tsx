@@ -53,6 +53,14 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
   const familyAch = useLiveQuery(() => db.achievements.toArray(), [], [] as Array<{ id: string; userId: string; code: string; nick?: string; unlockedAt: number }>);
 
   useEffect(() => {
+    // прямой ответ про сброс достижений (пауза 90+ дней, В., 25.10)
+    if (localStorage.getItem('dd-ach-reset') === '1') {
+      localStorage.removeItem('dd-ach-reset');
+      setFact({ f: { id: 'ach-reset', emoji: '🔄', cls: 1, rarity: 0,
+        text: 'Пауза была больше 90 дней — достижения начаты заново. Награды вернутся быстро: большинство помнит свой ритм.',
+        src: '' }, at: Date.now() });
+      return;
+    }
     // детектор при входе на день; свежие ачивки могут пробить факт-график (класс 1–2)
     detectAchievements().then(codes => {
       const map: Record<string, string> = { w5: 'w5', gap_return: 'gap_return', streak3: 'streak3', streak7: 'streak7', streak30: 'streak30' };
@@ -192,8 +200,10 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
           <div className="dd-fact-card" onClick={e => e.stopPropagation()}>
             <div className="dd-fact-emoji">{fact.f.emoji}</div>
             <div className="dd-fact-text">{fact.f.text}</div>
-            <a className="dd-fact-src" href={fact.f.src} target="_blank" rel="noreferrer"
-              onClick={() => markFactClosed(fact.f.id, fact.at, true)}>Источник →</a>
+            {fact.f.src && (
+              <a className="dd-fact-src" href={fact.f.src} target="_blank" rel="noreferrer"
+                onClick={() => markFactClosed(fact.f.id, fact.at, true)}>Источник →</a>
+            )}
             <button className="dd-action strong" onClick={() => { markFactClosed(fact.f.id, fact.at, false); setFact(null); }}>Понятно</button>
           </div>
         </div>

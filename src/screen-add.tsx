@@ -8,7 +8,7 @@ const ScannerLayer = lazy(() => import('./scanner-layer').then(m => ({ default: 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
 import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
-import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS } from './lib';
+import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS, matchTokens } from './lib';
 import { Sheet, Modal, Confirm, Collapse, TopSheet, SwipeRow, cx, BarcodeIcon as Icons_Barcode } from './ui';
 import { searchOff, saveOffHit, type OffHit } from './off';
 import { unlockSpecial } from './achievements';
@@ -59,7 +59,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   // При поиске: недавние совпадения отдельно, остальная выдача — отдельно.
   // Дубли между секциями исключены: продукт из «Недавних» не повторяется в «Проверенных».
   const recentMatches = useMemo(
-    () => (searching ? recentItems.filter(i => normE(i.name).includes(ql)).slice(0, 5) : []),
+    () => (searching ? recentItems.filter(i => matchTokens(i.name, q)).slice(0, 5) : []),
     [searching, recentItems, ql]);
 
   const searchRest = useMemo(() => {
@@ -75,7 +75,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
     return sum + (f ? f.per100.kcal * it.grams / 100 : 0);
   }, 0);
   const mealList = useMemo(
-    () => (searching ? (meals ?? []).filter(m => normE(m.name).includes(ql)) : meals ?? []),
+    () => (searching ? (meals ?? []).filter(m => matchTokens(m.name, q)) : meals ?? []),
     [searching, meals, ql]);
 
   async function tapMeal(m: SavedMeal) {
@@ -717,7 +717,7 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
     onClose(); setName(''); setItems([]); setYield(''); setUnit('g'); setPcs(''); setErr('');
   }
 
-  const filtered = (foods ?? []).filter(f => !pickQ || normE(f.name).includes(normE(pickQ))).slice(0, 40);
+  const filtered = (foods ?? []).filter(f => !pickQ || matchTokens(f.name, pickQ)).slice(0, 40);
   const yNum = parseFloat(yieldG);
 
   return (

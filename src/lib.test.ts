@@ -2,7 +2,7 @@
 // Запуск: npm test. Пояснение В. (11.10, ревью В2): это страховка от числовых регрессий —
 // Д1 «вес из будущего» нашёл бы именно такой тест.
 import { describe, it, expect, vi } from 'vitest';
-import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS } from './lib';
+import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS, matchTokens } from './lib';
 import { windowsFromEntries } from './banner';
 import { pickFact, markFactClosed } from './facts';
 
@@ -213,5 +213,20 @@ describe('факт-карточки', () => {
     const state = JSON.parse((globalThis as { localStorage: Storage }).localStorage.getItem('dd-facts-state')!);
     expect(state.read[f1.id]).toBe(1);
     vi.unstubAllGlobals();
+  });
+});
+
+describe('поиск по словам (В., 25.10: «белый хлеб» не находил «Хлеб белый»)', () => {
+  it('слова в любом порядке находятся', () => {
+    expect(matchTokens('Хлеб белый пшеничный', 'белый хлеб')).toBe(true);
+    expect(matchTokens('Хлеб белый', 'хлеб белый')).toBe(true);
+  });
+  it('все слова обязательны', () => {
+    expect(matchTokens('Хлеб белый', 'белый бородинский')).toBe(false);
+    expect(matchTokens('Молоко 3.2%', 'молоко буш')).toBe(false);
+  });
+  it('одно слово и ё работают как раньше', () => {
+    expect(matchTokens('Мёд цветочный', 'мед')).toBe(true);
+    expect(matchTokens('Сыр Гаудетте', 'ГАУД')).toBe(true);
   });
 });

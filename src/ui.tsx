@@ -97,6 +97,7 @@ export function Sheet({ open, onClose, children, title, note }: {
         >
           <div className="dd-grab" />
           {title && <h3 className="dd-sheet-title">{title}</h3>}
+          <button className="dd-sheet-x" aria-label="Закрыть" onClick={onClose}>✕</button>
           {note && <div className="dd-sheet-note">{note}</div>}
         </div>
         {children}

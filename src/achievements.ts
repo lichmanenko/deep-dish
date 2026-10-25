@@ -52,6 +52,21 @@ export async function detectAchievements(): Promise<string[]> {
   const unlocked: string[] = [];
 
   const days = [...new Set(entries.map(e => e.date))].sort();
+
+  // В., 25.10: 90+ дней без записей — достижения не имеют смысла; сбрасываем и сообщаем прямо
+  const lastDay = days[days.length - 1];
+  if (lastDay && mine.some(a => a.deletedAt === null || a.deletedAt === undefined)) {
+    const pauseDays = Math.round((Date.now() - new Date(lastDay + 'T00:00:00').getTime()) / 86400000);
+    if (pauseDays >= 90) {
+      const now2 = Date.now();
+      await Promise.all(mine.filter(a => a.deletedAt === null || a.deletedAt === undefined)
+        .map(a => db.achievements.update(a.id, { deletedAt: now2, updatedAt: now2 })));
+      localStorage.setItem('dd-ach-reset', '1');
+      track('achievement_reset', { after: pauseDays });
+      return [];
+    }
+  }
+
   const daySet = new Set(days);
   const today = todayISO();
   // стрик до сегодня (включительно, если сегодня есть запись; иначе до вчера)

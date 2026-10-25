@@ -1,7 +1,7 @@
 // Слой доступа к данным + расчёты нормы + трекер метрик
 import { bannerAction } from './banner';
 import { db, newId, LOCAL_USER, type Entry, type Food, type Profile, type Recipe, type Slot, type KbjuSnapshot, type DayNorma, type SlotMark, type PortionPreset } from './db';
-import { todayISO, nowHM, kbjuSuspicious, fmt, normE, guessCategory, HIDDEN_CATS } from './lib';
+import { todayISO, nowHM, kbjuSuspicious, fmt, normE, guessCategory, HIDDEN_CATS, matchTokens } from './lib';
 
 // ── Метрики ──
 const SESSION = newId();
@@ -97,7 +97,7 @@ export async function getCatalog(query: string): Promise<CatalogItem[]> {
   const isBarcode = /^\d{8,13}$/.test(q);
   const all = await db.foods.filter(f => !f.deletedAt && !f.hidden).toArray();
   let foods = all.filter(f =>
-    !q || normE(f.name).includes(normE(q)) || normE(f.brand ?? '').includes(normE(q))
+    !q || matchTokens(f.name, q) || matchTokens(f.brand ?? '', q)
     || (isBarcode && (f.barcode ?? '').includes(q)));
   // нечёткий тыл: точных нет — ищем с опечатками (только по достаточно длинным словам)
   if (q && !isBarcode && foods.length === 0) {
