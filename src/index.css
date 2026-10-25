@@ -63,7 +63,9 @@ body {
 }
 .dd-sheet.show { transform: translateY(0); }
 .dd-sheet.dragging { transition: none; }
-.dd-sheet-head { touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; min-height: 38px; }
+.dd-sheet-head { touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; min-height: 38px; position: relative; }
+.dd-sheet-x { position: absolute; right: 0; top: 0; width: 34px; height: 34px; border: none; border-radius: 12px;
+  background: var(--tr); color: var(--mut); font-size: 0.75rem; cursor: pointer; }
 .dd-grab { width: 44px; height: 5px; border-radius: 3px; background: var(--tr); margin: 0 auto 10px; }
 .dd-sheet-title { font-size: 1.125rem; font-weight: 700; margin-bottom: 4px; }
 .dd-sheet-note { font-size: 0.78125rem; color: var(--mut); margin-bottom: 14px; line-height: 1.45; }
