@@ -126,7 +126,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
           <MacroChip v={totals.c} goal={norma?.c} k="углев." compact={compact} />
         </div>
 
-        <button className="dd-action" onClick={() => onAdd(null)}>＋ еда</button>
+        <button className="dd-action strong" onClick={() => onAdd(null)}>＋ еда</button>
       </div>
 
       <Slide dir={dir}>
