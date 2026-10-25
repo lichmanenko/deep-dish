@@ -1,9 +1,10 @@
 // Юнит-тесты чистой логики Deep Dish (vitest): расчёты нормы, тренда, цели, КБЖУ-эвристика.
 // Запуск: npm test. Пояснение В. (11.10, ревью В2): это страховка от числовых регрессий —
 // Д1 «вес из будущего» нашёл бы именно такой тест.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS } from './lib';
 import { windowsFromEntries } from './banner';
+import { pickFact, markFactClosed } from './facts';
 
 // calcNorma/weightTrend/goalProgress тянут Dexie (IndexedDB) — вынесенную чистую логику
 // тестируем через пере-реализацию контрактов, зафиксированных в SPEC; при расхождении — тест красный.
@@ -158,5 +159,59 @@ describe('арифметика рецептов (контракт SPEC)', () => 
   });
   it('ошибка ×100 (баг v0.5.2) поймана бы: 300 ккал на 200 г — это 150, не 1.5', () => {
     expect(per100(300, 200)).not.toBeLessThan(10);
+  });
+});
+
+// ── v0.7.6: механика фактов (ротация/приоритеты/прочитанность) ──
+vi.mock('./store', async importOriginal => ({ ...(await importOriginal<typeof import('./store')>()), track: () => {} })); // только track, остальное живое
+
+describe('факт-карточки', () => {
+  const mk = () => { const s: Record<string, string> = {}; return {
+    getItem: (k: string) => s[k] ?? null, setItem: (k: string, v: string) => { s[k] = v; }, removeItem: (k: string) => { delete s[k]; },
+  }; };
+  const ctx = (todayISO: string, extra: Partial<Parameters<typeof pickFact>[0]> = {}) =>
+    ({ todayISO, ...extra } as Parameters<typeof pickFact>[0]);
+  const DAY = 86400000;
+
+  it('первый факт доступен сразу, затем не чаще 1 в 3 дня', () => {
+    vi.stubGlobal('localStorage', mk());
+    const t0 = Date.now();
+    expect(pickFact(ctx('2026-10-25'), { factsOn: true }, t0)).not.toBeNull();
+    expect(pickFact(ctx('2026-10-26'), { factsOn: true }, t0 + DAY)).toBeNull();   // день спустя — нет
+    expect(pickFact(ctx('2026-10-27'), { factsOn: true }, t0 + 2 * DAY)).toBeNull(); // два — нет
+    expect(pickFact(ctx('2026-10-28'), { factsOn: true }, t0 + 3 * DAY)).not.toBeNull(); // три — да
+    vi.unstubAllGlobals();
+  });
+  it('личная веха пробивает график в день события', () => {
+    vi.stubGlobal('localStorage', mk());
+    const t0 = Date.now();
+    expect(pickFact(ctx('2026-10-25'), { factsOn: true }, t0)).not.toBeNull();
+    const f = pickFact(ctx('2026-10-26', { milestoneToday: 'w5' }), { factsOn: true }, t0 + DAY);
+    expect(f?.id).toBe('w5'); // класс 1 — веха важнее графика
+    vi.unstubAllGlobals();
+  });
+  it('выключатель глушит факты', () => {
+    vi.stubGlobal('localStorage', mk());
+    expect(pickFact(ctx('2026-10-25'), { factsOn: false }, Date.now())).toBeNull();
+    vi.unstubAllGlobals();
+  });
+  it('прочитанный факт не повторяется; дважды нечитанный выводится из ротации', () => {
+    vi.stubGlobal('localStorage', mk());
+    const t0 = Date.now();
+    const f1 = pickFact(ctx('2026-10-25'), { factsOn: true }, t0)!;
+    markFactClosed(f1.id, t0, true); // через источник = прочитан
+    // исчерпываем прочтением все факты классов 4-5, кроме одного
+    let day = '2026-10-28'; let t = t0 + 3 * DAY;
+    let guard = 0;
+    while (guard++ < 40) {
+      const f = pickFact(ctx(day), { factsOn: true }, t);
+      if (!f) break;
+      markFactClosed(f.id, t, true);
+      day = new Date(new Date(day).getTime() + 4 * DAY).toISOString().slice(0, 10);
+      t += 4 * DAY;
+    }
+    const state = JSON.parse((globalThis as { localStorage: Storage }).localStorage.getItem('dd-facts-state')!);
+    expect(state.read[f1.id]).toBe(1);
+    vi.unstubAllGlobals();
   });
 });

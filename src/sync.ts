@@ -19,10 +19,12 @@ const TABLES = {
   foods: db.foods, recipes: db.recipes, entries: db.entries,
   weightLogs: db.weightLogs, dayNormas: db.dayNormas,
   slots: db.slots, savedMeals: db.savedMeals,
+  achievements: db.achievements, // v0.7.6: публичные записи семьи
 } as const;
 type Kind = keyof typeof TABLES;
 const PROFILE_KEY = 'profiles' as const;
 const PRIVATE_KINDS = new Set(['entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals']);
+// achievements — публичные: userId в теле остаётся автором (для «кто» в ленте семьи)
 
 export function loadSync(): SyncSettings | null {
   try {
@@ -67,6 +69,7 @@ export async function runSync(): Promise<SyncResult> {
     for (const r of rows) {
       const body = { ...r };
       if (PRIVATE_KINDS.has(k)) body.userId = st.userId;
+      if (k === 'achievements' && (body as { userId?: string }).userId === 'local') body.userId = st.userId; // автор = это устройство
       changes.push({ kind: k, body });
     }
   }

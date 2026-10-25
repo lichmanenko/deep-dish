@@ -162,6 +162,20 @@ input[type=time].dd-input { padding: 0 8px; }
 @keyframes dd-in-r { from { opacity: .3; transform: translateX(22px); } to { opacity: 1; transform: none; } }
 @keyframes dd-in-l { from { opacity: .3; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
 
+/* Факт-карточка (v0.7.6): крупный эмодзи, факт, источник; прочитанность — в facts.ts */
+.dd-fact-bg { position: fixed; inset: 0; z-index: 80; background: var(--glass-strong); backdrop-filter: blur(9px);
+  display: flex; align-items: center; justify-content: center; padding: 24px; }
+.dd-fact-card { max-width: 320px; width: 100%; background: var(--panel); border-radius: 22px; padding: 22px 20px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.28); text-align: center; }
+.dd-fact-emoji { font-size: 2.375rem; line-height: 1; margin-bottom: 10px; }
+.dd-fact-text { font-size: 0.9375rem; line-height: 1.5; margin-bottom: 10px; }
+.dd-fact-src { display: block; font-size: 0.75rem; color: var(--mut); text-decoration: underline; margin-bottom: 12px; }
+/* тост достижений семьи */
+.dd-ach-toast { position: fixed; left: 16px; right: 16px; bottom: 72px; z-index: 60;
+  background: var(--panel); border-radius: 16px; padding: 10px 14px; display: flex; gap: 10px; align-items: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,.22); animation: dd-in-r .26s ease; }
+.dd-ach-toast .em { font-size: 1.5rem; flex: none; }
+
 /* AlwaysOn-зона «Сегодня» (В., 24.10): кольца+чипы+кнопка закреплены, приёмы скроллятся под ними */
 .dd-alwayson {
   position: sticky; top: 0; z-index: 20;

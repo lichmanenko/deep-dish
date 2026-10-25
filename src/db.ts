@@ -76,6 +76,16 @@ export interface SlotMark {
   userId: string; createdAt: number; updatedAt: number; deletedAt: number | null;
 }
 
+/** Ачивка (v0.7.6): зарабатывается локально, уезжает семье синком — доска в Профиле, лента в Семье. */
+export interface Achievement {
+  id: string;        // authorId + '|' + code
+  userId: string;    // автор (для показа «кто» в семье; у себя — 'local')
+  code: string;      // 'streak7', 'w5', …
+  nick?: string;     // имя автора для ленты семьи (относительное публичное)
+  unlockedAt: number;
+  updatedAt: number; deletedAt: number | null;
+}
+
 /** Снапшот дневной нормы: фиксируется за днём, прошлое не пересчитывается (решение В.). */
 export interface DayNorma {
   date: string; // YYYY-MM-DD, первичный ключ
@@ -148,6 +158,7 @@ class DeepDishDb extends Dexie {
   weightLogs!: EntityTable<WeightLog, 'id'>;
   profiles!: EntityTable<Profile, 'userId'>;
   events!: EntityTable<MetricEvent, 'id'>;
+  achievements!: EntityTable<Achievement, 'id'>;
 
   constructor() {
     super('deepdish');
@@ -242,6 +253,10 @@ class DeepDishDb extends Dexie {
         const snap = { ...e.snapshot, kcal: Math.round(fixed.get(e.refId)! * e.grams / 10) / 10 };
         await tx.table('entries').update(e.id, { snapshot: snap, updatedAt: now });
       }
+    });
+    // v7 (0.7.6): достижения — публичные записи семьи (видны всем, выдают факт достижения)
+    this.version(7).stores({
+      achievements: 'id, userId, code, unlockedAt',
     });
   }
 }

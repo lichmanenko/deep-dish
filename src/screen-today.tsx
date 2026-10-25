@@ -19,6 +19,8 @@ import type { DayNorma } from './db';
 import { getEntries, getProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, getSlotMarks, toggleSlotMark, type GoalProgress } from './store';
 import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt, loadSettings } from './lib';
 import { Ring, Sheet, useSwipe, Slide, Confirm, cx, Modal, LogoMark } from './ui';
+import { pickFact, markFactClosed, type Fact } from './facts';
+import { detectAchievements, achByCode, type AchDef } from './achievements';
 
 export function TodayScreen({ date, setDate, onAdd, showTime }: {
   date: string; setDate: (d: string) => void; onAdd: (slot: Slot | null) => void; showTime: 'snacks' | 'all';
@@ -45,6 +47,36 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
   const [confirmDel, setConfirmDel] = useState<Entry | null>(null);
   const [explain, setExplain] = useState<null | { title: string; text: string }>(null);
   const [goalInfo, setGoalInfo] = useState(false);
+  // факты и достижения (v0.7.6)
+  const [fact, setFact] = useState<{ f: Fact; at: number } | null>(null);
+  const [achToast, setAchToast] = useState<AchDef | null>(null);
+  const familyAch = useLiveQuery(() => db.achievements.toArray(), [], [] as Array<{ id: string; userId: string; code: string; nick?: string; unlockedAt: number }>);
+
+  useEffect(() => {
+    // детектор при входе на день; свежие ачивки могут пробить факт-график (класс 1–2)
+    detectAchievements().then(codes => {
+      const map: Record<string, string> = { w5: 'w5', gap_return: 'gap_return', streak3: 'streak3', streak7: 'streak7', streak30: 'streak30' };
+      const ms = codes.map(c => map[c]).find(Boolean);
+      const f = pickFact({ todayISO: date, milestoneToday: ms, gapReturnToday: codes.includes('gap_return') }, { factsOn: loadSettings().factsOn });
+      if (f) setFact({ f, at: Date.now() });
+    }).catch(() => { /* тихо */ });
+  }, [date]);
+
+  useEffect(() => {
+    // тост чужих достижений: новые с последнего просмотра (синк подтянет — useLiveQuery оживает сам)
+    if (!loadSettings().factsOn) return;
+    const seen = Number(localStorage.getItem('dd-ach-seen') ?? 0);
+    const fresh = (familyAch ?? []).filter(a => a.userId !== 'local' && a.unlockedAt > seen)
+      .sort((a, b) => b.unlockedAt - a.unlockedAt)[0];
+    if (!fresh) return;
+    const def = achByCode(fresh.code);
+    if (!def) return;
+    localStorage.setItem('dd-ach-seen', String(Date.now()));
+    setAchToast(def);
+    track('achievement_toast', { code: fresh.code });
+    const t = setTimeout(() => setAchToast(null), 8000);
+    return () => clearTimeout(t);
+  }, [familyAch]);
   const goal = useLiveQuery(() => goalProgress(date), [date], null);
   const totals = useMemo(() => entries.reduce((s, e) => ({
     kcal: s.kcal + e.snapshot.kcal, p: s.p + e.snapshot.p, f: s.f + e.snapshot.f, c: s.c + e.snapshot.c,
@@ -154,6 +186,25 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
           );
         })}
       </Slide>
+
+      {fact && (
+        <div className="dd-fact-bg" onClick={() => { markFactClosed(fact.f.id, fact.at, false); setFact(null); }}>
+          <div className="dd-fact-card" onClick={e => e.stopPropagation()}>
+            <div className="dd-fact-emoji">{fact.f.emoji}</div>
+            <div className="dd-fact-text">{fact.f.text}</div>
+            <a className="dd-fact-src" href={fact.f.src} target="_blank" rel="noreferrer"
+              onClick={() => markFactClosed(fact.f.id, fact.at, true)}>Источник →</a>
+            <button className="dd-action strong" onClick={() => { markFactClosed(fact.f.id, fact.at, false); setFact(null); }}>Понятно</button>
+          </div>
+        </div>
+      )}
+
+      {achToast && (
+        <div className="dd-ach-toast">
+          <span className="em">{achToast.emoji}</span>
+          <span className="text-[0.84375rem]"><b>{achToast.name}</b> · {achToast.desc}</span>
+        </div>
+      )}
 
       <Calendar open={calOpen} date={date} onClose={() => setCalOpen(false)} onPick={d => { setDate(d); setCalOpen(false); }} filled={filledDays} />
 

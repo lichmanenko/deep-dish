@@ -67,8 +67,10 @@ export interface DeviceSettings {
   palette: string; theme: 'auto' | 'light' | 'dark'; showTime: 'snacks' | 'all'; onboarded: boolean;
   /** рассчитывать калории из БЖУ при создании продуктов (по умолчанию вкл) */
   calcKcal: boolean;
+  /** факт-карточки и тосты достижений (v0.7.6; доска заработанного остаётся всегда) */
+  factsOn: boolean;
 }
-const DEF: DeviceSettings = { palette: 'graphite', theme: 'auto', showTime: 'snacks', onboarded: false, calcKcal: true, textScale: 1 };
+const DEF: DeviceSettings = { palette: 'graphite', theme: 'auto', showTime: 'snacks', onboarded: false, calcKcal: true, factsOn: true, textScale: 1 };
 export function loadSettings(): DeviceSettings {
   try { return { ...DEF, ...JSON.parse(localStorage.getItem('dd-settings') ?? '{}') }; } catch { return DEF; }
 }

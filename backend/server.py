@@ -63,7 +63,8 @@ def maybe_backup() -> None:
 # kinds: общий каталог vs личные данные
 PUBLIC_KINDS = {'foods', 'recipes'}
 PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'profiles'}
-ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS
+FAMILY_KINDS = {'achievements'}  # v0.7.6: публичные записи семьи (достижения — факт известен всем)
+ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS | FAMILY_KINDS
 
 app = FastAPI(title='Deep Dish sync', version='0.4.1')
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
@@ -577,6 +578,8 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
                 if owner != uid and owner != 'system' and not body.get('isPublic', True):
                     rejected += 1
                     continue
+            elif ch.kind in FAMILY_KINDS:
+                body['ownerId'] = uid  # семейно-публичное: автор владеет записью, видят все
             else:
                 body['ownerId'] = uid  # личное всегда своё
             updated = int(body.get('updatedAt') or 0)
@@ -606,7 +609,8 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
 
         # 3) отдать изменения новее since: личное — только своё, каталог — живой общий
         rows = c.execute('''SELECT kind, body, updated, deleted FROM items
-                            WHERE updated > ? AND kind != 'offcache' AND (owner = ? OR (kind IN ('foods','recipes') AND deleted = 0))
+                            WHERE updated > ? AND kind != 'offcache'
+                              AND (owner = ? OR (kind IN ('foods','recipes','achievements') AND deleted = 0))
                             ORDER BY updated LIMIT 5000''',
                          (payload.since, uid)).fetchall()
         out: list[dict[str, Any]] = []
