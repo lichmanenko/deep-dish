@@ -65,7 +65,7 @@ PUBLIC_KINDS = {'foods', 'recipes'}
 PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'profiles'}
 ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS
 
-app = FastAPI(title='Deep Dish sync', version='0.4.0')
+app = FastAPI(title='Deep Dish sync', version='0.4.1')
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
@@ -383,8 +383,62 @@ def health_code(payload: CodeIn | None = None, user: sqlite3.Row = Depends(auth)
     return {'code': cur}
 
 
+
+# ── мини-мост v2 (В., 25.10: сборка шортката — боль) ─────────────────────────
+# Shortcuts сериализует дату в JSON по-разному в зависимости от версии/локали;
+# принимаем все известные формы и приводим к YYYY-MM-DD.
+_DATE_FORMATS = [
+    '%Y-%m-%d',
+    '%Y-%m-%d %H:%M:%S',
+    '%Y-%m-%dT%H:%M:%S',
+    '%Y-%m-%dT%H:%M:%S%z',
+    '%Y-%m-%d %H:%M:%S %z',
+    '%d.%m.%Y %H:%M',
+    '%d.%m.%Y %H:%M:%S',
+    '%d.%m.%Y, %H:%M',
+    '%d.%m.%Y, %H:%M:%S',
+    '%d %B %Y г. в %H:%M',
+    '%d %B %Y г., %H:%M',
+    '%d %B %Y at %H:%M',
+    '%B %d, %Y at %I:%M %p',
+    '%d %b %Y %H:%M:%S',
+]
+_MONTHS_RU = {'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4, 'мая': 5, 'июня': 6,
+              'июля': 7, 'августа': 8, 'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12}
+
+
+def parse_date_flex(raw: Any) -> str | None:
+    """Любая сериализация даты Shortcuts → YYYY-MM-DD (или None)."""
+    import re as _re
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        ts = float(raw)
+        if ts > 1e12: ts /= 1000.0          # миллисекунды
+        if 946684800 < ts < 4102444800:     # 2000..2100
+            import datetime as _dt
+            return _dt.datetime.fromtimestamp(ts, _dt.timezone.utc).astimezone().strftime('%Y-%m-%d')
+        return None
+    txt = str(raw).strip().strip('"')
+    m = _re.match(r'^(\d{4})-(\d{2})-(\d{2})', txt)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = _re.match(r'^(\d{1,2})[.](\d{1,2})[.](\d{4})', txt)
+    if m:
+        return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    m = _re.match(r'^(\d{1,2})\s+([а-яА-Я]+)\s+(\d{4})', txt)
+    if m and m.group(2).lower() in _MONTHS_RU:
+        return f"{m.group(3)}-{_MONTHS_RU[m.group(2).lower()]:02d}-{int(m.group(1)):02d}"
+    import datetime as _dt
+    for fmt in _DATE_FORMATS:
+        try:
+            return _dt.datetime.strptime(txt, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+
 class HealthWeightIn(BaseModel):
-    date: str   # YYYY-MM-DD
+    date: Any   # всеядно: ISO, «25.10.2026, 10:15», «25 октября 2026 г. …», epoch (мини-мост v2)
     kg: float
 
 
@@ -396,11 +450,14 @@ def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]
     now = now_ms()
     applied = 0
     with db() as c:
+        skipped = []
         for it in items:
-            if not _re.match(r'^\d{4}-\d{2}-\d{2}$', it.date) or not (25 <= it.kg <= 350):
+            d = parse_date_flex(it.date)
+            if not d or not (25 <= it.kg <= 350):
+                skipped.append(str(it.date)[:40])
                 continue
-            iid = "hw-" + u['userId'] + "-" + it.date
-            body = json.dumps({'id': iid, 'userId': u['userId'], 'date': it.date,
+            iid = "hw-" + u['userId'] + "-" + d
+            body = json.dumps({'id': iid, 'userId': u['userId'], 'date': d,
                                'weightKg': round(it.kg, 2), 'bodyFatPct': None,
                                'createdAt': now, 'updatedAt': now, 'deletedAt': None},
                               ensure_ascii=False)
@@ -411,8 +468,8 @@ def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]
                       (iid, u['userId'], now, body))
             applied += 1
         # Е6(ревью-2): дедуп одним проходом — ручные записи пришедших дат уходят в tombstone
-        dates = {it.date for it in items
-                 if _re.match(r'^\d{4}-\d{2}-\d{2}$', it.date) and 25 <= it.kg <= 350}
+        dates = {d for it in items
+                 if (d := parse_date_flex(it.date)) and 25 <= it.kg <= 350}
         own = {'hw-' + u['userId'] + '-' + d for d in dates}
         for r in c.execute("SELECT id, body FROM items WHERE kind = 'weightLogs' AND owner = ? AND deleted = 0",
                            (u['userId'],)).fetchall():
@@ -420,14 +477,16 @@ def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]
                 continue  # сами мостовые записи этой пачки
             if json.loads(r['body']).get('date') in dates:
                 c.execute('UPDATE items SET deleted = ? WHERE kind = ? AND id = ?', (now, 'weightLogs', r['id']))
-    log.info('health_weight user=%s nick=%s applied=%d', u['userId'], u['nickname'], applied)
-    return {'ok': True, 'applied': applied}
+    log.info('health_weight user=%s nick=%s applied=%d skipped=%s', u['userId'], u['nickname'], applied, skipped)
+    return {'ok': True, 'applied': applied, 'skipped': skipped}
 
 
 @app.get('/health/day')
-def health_day(date: str, code: str = '') -> dict[str, Any]:
+def health_day(date: str = '', code: str = '') -> dict[str, Any]:
     """итог калорий пользователя за дату — шорткат пишет его в Health (Dietary Energy)"""
     u = auth_code(code)
+    import datetime as _dt
+    date = parse_date_flex(date) or _dt.date.today().isoformat()
     kcal = 0.0
     with db() as c:
         rows = c.execute("SELECT body FROM items WHERE kind = 'entries' AND owner = ? AND deleted = 0",
@@ -438,6 +497,53 @@ def health_day(date: str, code: str = '') -> dict[str, Any]:
                 kcal += (b.get('snapshot') or {}).get('kcal', 0)
     return {'date': date, 'kcal': round(kcal)}
 
+
+
+# ── мини-мост v2: страница-помощник сборки шортката ──────────────────────────
+from fastapi.responses import HTMLResponse
+
+
+@app.get('/health/setup', response_class=HTMLResponse)
+def health_setup() -> str:
+    """Страница для сборки шортката: вставил код — получил готовые URL для копирования."""
+    return """<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Dish — мост Health</title>
+<style>
+ body{font-family:-apple-system,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:20px;background:#14171B;color:#E9EDF2}
+ h1{font-size:20px} h2{font-size:16px;margin-top:24px}
+ .card{background:#1C232D;border-radius:14px;padding:14px;margin:10px 0}
+ input{width:100%;box-sizing:border-box;font-size:16px;padding:10px;border-radius:10px;border:1px solid #2A3542;background:#10151C;color:#E9EDF2}
+ button{width:100%;padding:10px;border:none;border-radius:10px;background:#44748F;color:#fff;font-size:15px;margin-top:6px}
+ code{display:block;background:#10151C;border-radius:8px;padding:8px;margin-top:6px;font-size:12px;word-break:break-all;color:#9ABCD9}
+ ol{padding-left:20px;font-size:14px;line-height:1.55} li{margin:6px 0}
+ .mut{color:#A9AFBA;font-size:13px}
+</style></head><body>
+<h1>Мост Apple Health — сборка за 6 шагов</h1>
+<p class="mut">Код моста: Deep Dish → Семья → «Мост Apple Health» → «Скопировать код».</p>
+<input id="code" placeholder="Вставь код моста (10 знаков)" inputmode="latin">
+<div class="card"><h2>Шаги в «Быстрых командах»</h2>
+<ol>
+<li><b>Найти данные «Здоровья»</b>: Тип — <i>Масса тела</i>; Порядок — <i>Сначала новые</i>; Лимит — <i>7</i>.</li>
+<li><b>Повторить для каждого</b> (Repeat for Each) — подставь «Результаты Здоровья».</li>
+<li>Внутри повтора — <b>Получить содержимое URL</b>: адрес ниже (URL 1). Разверни: Метод — <i>POST</i> → Тип запроса — <i>JSON</i>; поле <code>date</code> = <i>Дата образца</i>, поле <code>kg</code> = <i>Значение</i>.</li>
+<li>После повтора — <b>Получить содержимое URL</b>: адрес ниже (URL 2), метод GET.</li>
+<li><b>Получить значение из словаря</b>: ключ <code>kcal</code>, из результата шага 4.</li>
+<li><b>Записать данные «Здоровья»</b>: Тип — <i>Пищевая энергия</i>, Значение — из шага 5, Единица — <i>ккал</i>.</li>
+</ol></div>
+<div class="card"><h2>Готовые адреса (код подставится сам)</h2>
+<h2>URL 1 — вес (POST)</h2><code id="u1">вставь код выше</code><button onclick="cp('u1')">Копировать URL 1</button>
+<h2>URL 2 — калории дня (GET)</h2><code id="u2">вставь код выше</code><button onclick="cp('u2')">Копировать URL 2</button></div>
+<div class="card"><h2>Автоматизация 23:30</h2>
+<p class="mut">«Автоматизации» → «+» → «Время дня» → 23:30, ежедневно → выбрать эту команду → выключить «Спрашивать перед запуском».</p></div>
+<script>
+const base = location.origin;
+const code = () => document.getElementById('code').value.trim();
+function upd(){ document.getElementById('u1').textContent = code() ? base+'/health/weight?code='+code() : 'вставь код выше';
+ document.getElementById('u2').textContent = code() ? base+'/health/day?code='+code() : 'вставь код выше'; }
+function cp(id){ const t=document.getElementById(id).textContent; if(navigator.clipboard) navigator.clipboard.writeText(t); else {const r=document.createRange();r.selectNode(document.getElementById(id));getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('copy');} }
+document.getElementById('code').addEventListener('input', upd);
+</script></body></html>"""
 
 @app.post('/sync')
 def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
