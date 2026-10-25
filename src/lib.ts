@@ -80,13 +80,32 @@ export function saveSettings(s: DeviceSettings) { localStorage.setItem('dd-setti
 /** нормализация поиска: ё -> е, нижний регистр */
 export const normE = (v: string) => v.toLowerCase().replace(/ё/g, 'е');
 
-/** Поиск каталога по словам: каждое слово запроса должно найтись в строке, в любом порядке
- *  (В., 25.10: «белый хлеб» не находил «Хлеб белый» — подстрока придирчива к порядку слов). */
+/** Грубый русский стемминг для поиска: отрезаем частые окончания, основа ≥3 символов.
+ *  Не лингвистика — цель: «хлеба»/«хлебный» находили «Хлеб». Консервативен: один суффикс. */
+const RU_SUFFIXES = [
+  'ями', 'ами', 'ого', 'его', 'ому', 'ему', 'ыми', 'ими', 'ая', 'яя', 'ое', 'ее', 'ые', 'ие', 'ой', 'ей', 'ий', 'ый', 'ом', 'ем',
+  'ах', 'ях', 'ам', 'ям', 'ов', 'ев', 'ей', 'ью', 'ия', 'ие', 'а', 'я', 'о', 'е', 'у', 'ю', 'ы', 'и', 'ь',
+].sort((a, b) => b.length - a.length);
+
+export function stemRu(w: string): string {
+  const n = normE(w);
+  if (n.length <= 4) return n; // короткие не трогаем: «сыр», «суп», «чай»
+  for (const suf of RU_SUFFIXES) {
+    if (n.length - suf.length >= 3 && n.endsWith(suf)) return n.slice(0, -suf.length);
+  }
+  return n;
+}
+
+// предлоги-стоп-слова: «салат ИЗ капусты» не должен требовать «из» в названии
+const STOP_WORDS = new Set(['из', 'с', 'в', 'на', 'для', 'и', 'без', 'от', 'по', 'или']);
+
+/** Поиск каталога по словам: слова в любом порядке, окончания обрезаны, предлоги игнорируются
+ *  (В., 25.10: порядок слов; 0.7.7: стемминг и стоп-слова). */
 export function matchTokens(hay: string, q: string): boolean {
-  const toks = normE(q).split(/\s+/).filter(Boolean);
+  const toks = normE(q).split(/\s+/).filter(t => t && !STOP_WORDS.has(t)).map(stemRu);
   if (!toks.length) return true;
-  const h = normE(hay);
-  return toks.every(t => h.includes(t));
+  const hWords = normE(hay).split(/\s+/).filter(Boolean).map(stemRu).join(' ');
+  return toks.every(t => hWords.includes(t));
 }
 
 export const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];

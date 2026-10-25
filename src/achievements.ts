@@ -38,6 +38,18 @@ export const ACH: AchDef[] = [
 function isoOf(d: Date): string { const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
 function todayISOOffset(base: string, off: number): string { const d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + off); return isoOf(d); }
 
+/** Начало последнего непрерывного сегмента дневника: пауза ≥90 дней начинает новый
+ *  (чистая логика — под тестами; кейс В.: после месяцев паузы «1000 дней» — бессмыслица). */
+export function lastSegmentStart(days: string[]): string | null {
+  if (!days.length) return null;
+  let start = days[0];
+  for (let i = 1; i < days.length; i++) {
+    const gap = Math.round((new Date(days[i]).getTime() - new Date(days[i - 1]).getTime()) / 86400000);
+    if (gap >= 90) start = days[i];
+  }
+  return start;
+}
+
 export const achByCode = (code: string) => ACH.find(a => a.code === code);
 
 /** Разовый детектор: вызывается при app_open и после добавления записи/веса/скана/рецепта.
@@ -51,20 +63,29 @@ export async function detectAchievements(): Promise<string[]> {
   const have = new Set(mine.map(a => a.code));
   const unlocked: string[] = [];
 
-  const days = [...new Set(entries.map(e => e.date))].sort();
+  // ── эпоха живого дневника (В., 25.10, разбирательство №2): достижения считаем только по
+  // записям, сделанным в приложении — импортированная история (MFP и пр.) не «накручивает»
+  // стаж. Граница: первый запуск устройства (события метрик) либо ранний createdAt записей.
+  const firstOpen = (await db.events.orderBy('ts').first())?.ts;
+  const minCreated = entries.length ? Math.min(...entries.map(e => e.createdAt ?? 0)) : Infinity;
+  const eraStartMs = Math.min(firstOpen ?? Infinity, minCreated);
+  const liveEntries = entries.filter(e => new Date(e.date + 'T00:00:00').getTime() >= new Date(eraStartMs).setHours(0, 0, 0, 0));
 
-  // В., 25.10: 90+ дней без записей — достижения не имеют смысла; сбрасываем и сообщаем прямо
-  const lastDay = days[days.length - 1];
-  if (lastDay && mine.some(a => a.deletedAt === null || a.deletedAt === undefined)) {
-    const pauseDays = Math.round((Date.now() - new Date(lastDay + 'T00:00:00').getTime()) / 86400000);
-    if (pauseDays >= 90) {
-      const now2 = Date.now();
-      await Promise.all(mine.filter(a => a.deletedAt === null || a.deletedAt === undefined)
-        .map(a => db.achievements.update(a.id, { deletedAt: now2, updatedAt: now2 })));
-      localStorage.setItem('dd-ach-reset', '1');
-      track('achievement_reset', { after: pauseDays });
-      return [];
-    }
+  // ── сегмент непрерывности: пауза ≥90 дней обнуляет достижения — хвостовая ИЛИ внутренняя
+  // («1000 дней» у вернувшегося после месяцев паузы — бессмыслица; сброс с прямым сообщением)
+  const allDays = [...new Set(liveEntries.map(e => e.date))].sort();
+  const segStart = lastSegmentStart(allDays) ?? todayISO();
+  const segEntries = liveEntries.filter(e => e.date >= segStart);
+  const days = [...new Set(segEntries.map(e => e.date))].sort();
+  const segStartMs = new Date(segStart + 'T00:00:00').getTime();
+
+  // ачивки, заработанные до текущего сегмента (или до границы эпохи), — в tombstone
+  const stale = mine.filter(a => !a.deletedAt && a.unlockedAt < segStartMs);
+  if (stale.length) {
+    const now3 = Date.now();
+    await Promise.all(stale.map(a => db.achievements.update(a.id, { deletedAt: now3, updatedAt: now3 })));
+    localStorage.setItem('dd-ach-reset', '1');
+    track('achievement_reset', { reason: 'segment', count: stale.length });
   }
 
   const daySet = new Set(days);
@@ -99,14 +120,14 @@ export async function detectAchievements(): Promise<string[]> {
     if (gaps[gaps.length - 1] >= 3 && preStreak >= 3 && !have.has('gap_return')) unlocked.push('gap_return');
   }
   // счётчики
-  if (entries.length >= 1 && !have.has('first_entry')) unlocked.push('first_entry');
-  if (entries.length >= 100 && !have.has('count100')) unlocked.push('count100');
-  if (entries.length >= 1000 && !have.has('count1000')) unlocked.push('count1000');
+  if (segEntries.length >= 1 && !have.has('first_entry')) unlocked.push('first_entry');
+  if (segEntries.length >= 100 && !have.has('count100')) unlocked.push('count100');
+  if (segEntries.length >= 1000 && !have.has('count1000')) unlocked.push('count1000');
   // неделя «в момент еды»: 7 последних дней, каждый с записями, без вечерней пачки
   // (записи дня созданы в течение дня: createdAt не позже 21:00 и разбросаны)
   const last7 = Array.from({ length: 7 }, (_, i) => todayISOOffset(today, -i));
   if (last7.every(d => daySet.has(d)) && !have.has('moment_week')) {
-    const okWeek = last7.every(d => entries.filter(e => e.date === d).every(e => {
+    const okWeek = last7.every(d => segEntries.filter(e => e.date === d).every(e => {
       const t = e.timeEaten || '';
       return !!t && t < '21:00'; // упрощённый критерий v1 (см. FACTS.md)
     }));
