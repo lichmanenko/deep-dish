@@ -16,7 +16,7 @@
 :root { color-scheme: light; }
 .dark { color-scheme: dark; }
 html, body, #root { height: 100%; }
-body { overflow-x: hidden; }
+body { overflow-x: clip; } /* clip, не hidden: hidden делает body скролл-контейнером и ломает position: sticky (AlwaysOn-зона, v0.7.5) */
 body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   background: var(--bg); color: var(--tx);
@@ -161,6 +161,13 @@ input[type=time].dd-input { padding: 0 8px; }
 .dd-slide.slide-from-l { animation: dd-in-l .26s ease; }
 @keyframes dd-in-r { from { opacity: .3; transform: translateX(22px); } to { opacity: 1; transform: none; } }
 @keyframes dd-in-l { from { opacity: .3; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
+
+/* AlwaysOn-зона «Сегодня» (В., 24.10): кольца+чипы+кнопка закреплены, приёмы скроллятся под ними */
+.dd-alwayson {
+  position: sticky; top: 0; z-index: 20;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 84%, transparent 100%);
+  padding: 6px 0 8px;
+}
 
 /* ── Таб-бар: см. блок ниже (плотная панель + автоскрытие) ── */
 .dd-tab {

@@ -69,7 +69,7 @@ const tabs = await page.evaluate(() => [...document.querySelectorAll('nav button
 ok('вкладки: ' + tabs.join('/'), tabs.length === 4);
 
 // 3. Добавить еду → создать продукт → сохранить запись
-await clickText('＋ Добавить еду');
+await clickText('＋ еда');
 await page.waitForTimeout(1000);
 bt = await body();
 ok('экран добавления открыт', bt.includes('＋ продукт'));

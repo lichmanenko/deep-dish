@@ -83,13 +83,14 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
         </div>
       </div>
 
-      <Slide dir={dir}>
+      {/* AlwaysOn-зона (В., 24.10): кольца, чипы БЖУ и кнопка записи закреплены — приёмы скроллятся под ними */}
+      <div className="dd-alwayson">
         {!norma && (
-          <div className="dd-card p-3 mb-3 text-xs text-center" style={{ color: 'var(--mut)' }}>
+          <div className="dd-card p-3 mb-2 text-xs text-center" style={{ color: 'var(--mut)' }}>
             Заполни профиль — появится дневная норма и кольцо. <b style={{ color: 'var(--acc-fg)' }}>Профиль →</b>
           </div>
         )}
-        <div className="dd-card p-5 mb-3">
+        <div className="dd-card p-4 mb-2">
           <div className="grid grid-cols-3 items-center">
             <div className="flex justify-center">
               <button aria-label="Переключить кольцо" onClick={toggleRingMode} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
@@ -119,12 +120,16 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
           </div>
         </div>
 
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-2">
           <MacroChip v={totals.p} goal={norma?.p} k="белки" compact={compact} />
           <MacroChip v={totals.f} goal={norma?.f} k="жиры" compact={compact} />
           <MacroChip v={totals.c} goal={norma?.c} k="углев." compact={compact} />
         </div>
 
+        <button className="dd-action" onClick={() => onAdd(null)}>＋ еда</button>
+      </div>
+
+      <Slide dir={dir}>
         {(slots ?? []).map(slot => {
           const es = entries.filter(e => e.slotId === slot.id);
           const sum = es.reduce((s, e) => s + e.snapshot.kcal, 0);
@@ -148,8 +153,6 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
             </div>
           );
         })}
-
-        <button className="dd-action mt-2" onClick={() => onAdd(null)}>＋ Добавить еду</button>
       </Slide>
 
       <Calendar open={calOpen} date={date} onClose={() => setCalOpen(false)} onPick={d => { setDate(d); setCalOpen(false); }} filled={filledDays} />
