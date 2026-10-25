@@ -66,7 +66,7 @@ PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'p
 FAMILY_KINDS = {'achievements'}  # v0.7.6: публичные записи семьи (достижения — факт известен всем)
 ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS | FAMILY_KINDS
 
-app = FastAPI(title='Deep Dish sync', version='0.4.1')
+app = FastAPI(title='Deep Dish sync', version='0.4.2')
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
@@ -97,6 +97,13 @@ def init_db() -> None:
             PRIMARY KEY (kind, id))''')
         c.execute('CREATE INDEX IF NOT EXISTS idx_items_updated ON items (kind, updated)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_items_owner ON items (owner, kind, updated)')
+        # v0.4.2 (срочный фикс «кексов», В., 26.10): серверное время применения — единственная
+        # мера новизны в выдаче; клиентские updatedAt пригодны только для LWW (телефонные часы врут)
+        cols = [r['name'] for r in c.execute("PRAGMA table_info(items)")]
+        if 'applied' not in cols:
+            c.execute("ALTER TABLE items ADD COLUMN applied INTEGER NOT NULL DEFAULT 0")
+            c.execute("UPDATE items SET applied = updated")
+        c.execute('CREATE INDEX IF NOT EXISTS idx_items_applied ON items (applied)')
         c.execute('''CREATE TABLE IF NOT EXISTS events (
             id TEXT PRIMARY KEY, userId TEXT NOT NULL, ts INTEGER NOT NULL,
             name TEXT NOT NULL, props TEXT NOT NULL)''')
@@ -449,6 +456,7 @@ def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]
     u = auth_code(code)
     import re as _re
     now = now_ms()
+    server_now = now  # v0.4.2: applied-время мостовых записей (выдача по серверным часам)
     applied = 0
     with db() as c:
         skipped = []
@@ -463,10 +471,10 @@ def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]
                                'createdAt': now, 'updatedAt': now, 'deletedAt': None},
                               ensure_ascii=False)
             # Е1(ревью-2): повторная посылка воскрешает запись (deleted = 0)
-            c.execute("INSERT INTO items (kind, id, owner, updated, deleted, body) "
-                      "VALUES ('weightLogs', ?, ?, ?, 0, ?) "
-                      "ON CONFLICT(kind, id) DO UPDATE SET updated = excluded.updated, deleted = 0, body = excluded.body",
-                      (iid, u['userId'], now, body))
+            c.execute("INSERT INTO items (kind, id, owner, updated, deleted, body, applied) "
+                      "VALUES ('weightLogs', ?, ?, ?, 0, ?, ?) "
+                      "ON CONFLICT(kind, id) DO UPDATE SET updated = excluded.updated, deleted = 0, body = excluded.body, applied = excluded.applied",
+                      (iid, u['userId'], now, body, server_now))
             applied += 1
         # Е6(ревью-2): дедуп одним проходом — ручные записи пришедших дат уходят в tombstone
         dates = {d for it in items
@@ -569,10 +577,16 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
                 continue
             owner = str(body.get('ownerId') or uid)
             if ch.kind in PUBLIC_KINDS:
+                # v0.4.2: старый клиент шлёт ownerId='local' — это МЕТКА устройства, не владелец;
+                # владельцем записи становится автор запроса (иначе Д4 отвергала автора его же продукт)
+                if owner == 'local':
+                    owner = uid
+                    body['ownerId'] = uid
                 body['ownerId'] = owner  # каталог: автор = ownerId (может быть system у форков)
-                # Д4(ревью): перезаписывать чужой продукт нельзя — только свой (форк = новый id)
+                # Д4(ревью): перезаписывать чужой продукт нельзя — только свой (форк = новый id);
+                # 'local' — наследие старого клиента, считаем ничейным: перезапись разрешена
                 cur_owner = c.execute('SELECT owner FROM items WHERE kind = ? AND id = ?', (ch.kind, cid)).fetchone()
-                if cur_owner and cur_owner['owner'] not in (uid, 'system'):
+                if cur_owner and cur_owner['owner'] not in (uid, 'system', 'local'):
                     rejected += 1
                     continue
                 if owner != uid and owner != 'system' and not body.get('isPublic', True):
@@ -590,12 +604,13 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
             cur = c.execute('SELECT updated FROM items WHERE kind = ? AND id = ?', (ch.kind, cid)).fetchone()
             if cur and cur['updated'] >= updated:
                 continue  # сервер новее или тот же — клиент получит серверную версию
-            c.execute('''INSERT INTO items (kind, id, owner, updated, deleted, body)
-                         VALUES (?,?,?,?,?,?)
+            c.execute('''INSERT INTO items (kind, id, owner, updated, deleted, body, applied)
+                         VALUES (?,?,?,?,?,?,?)
                          ON CONFLICT (kind, id) DO UPDATE SET
                            owner = excluded.owner, updated = excluded.updated,
-                           deleted = excluded.deleted, body = excluded.body''',
-                      (ch.kind, cid, uid if ch.kind not in PUBLIC_KINDS else owner, updated, deleted, json.dumps(body, ensure_ascii=False)))
+                           deleted = excluded.deleted, body = excluded.body, applied = excluded.applied''',
+                      (ch.kind, cid, uid if ch.kind not in PUBLIC_KINDS else owner, updated, deleted,
+                       json.dumps(body, ensure_ascii=False), server_now))
             applied += 1
 
         # 2) события метрик (идемпотентно по id)
@@ -608,10 +623,10 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
                 pass
 
         # 3) отдать изменения новее since: личное — только своё, каталог — живой общий
-        rows = c.execute('''SELECT kind, body, updated, deleted FROM items
-                            WHERE updated > ? AND kind != 'offcache'
+        rows = c.execute('''SELECT kind, body, updated, deleted, applied FROM items
+                            WHERE applied > ? AND kind != 'offcache'
                               AND (owner = ? OR (kind IN ('foods','recipes','achievements') AND deleted = 0))
-                            ORDER BY updated LIMIT 5000''',
+                            ORDER BY applied LIMIT 5000''',
                          (payload.since, uid)).fetchall()
         out: list[dict[str, Any]] = []
         for r in rows:
@@ -625,10 +640,11 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
 
         # 4) чистка старых tombstone (не чаще раза в час — по факту запроса, дёшево на SQLite)
         c.execute('DELETE FROM items WHERE deleted = 1 AND updated < ?', (server_now - TOMBSTONE_TTL_DAYS * 86400000,))
+        pass
 
-    # Д2(ревью): курсор клиента — последняя фактически отданная запись (не текущее время сервера),
-    # иначе хвост за LIMIT 5000 теряется навсегда
-    max_updated = out[-1]['updated'] if out else None
+    # Д2(ревью): курсор — последняя фактически отданная запись; выдача короче лимита — значит
+    # исчерпана до «сейчас». Мусорные applied в базе на курсор не влияют (счёт по отданным строкам).
+    max_updated = rows[-1]['applied'] if len(rows) >= 5000 else server_now
     if applied or payload.events:
         log.info('sync user=%s nick=%s applied=%d rejected=%d out=%d events=%d',
                  uid, user['nickname'], applied, rejected, len(out), len(payload.events))
