@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import { loadSync, saveSync, registerDevice, runSync, syncStatusText, type SyncSettings } from './sync';
 import { fetchMetrics, type MetricsData } from './metrics';
 import { track } from './store';
+import { db } from './db';
+import { achByCode } from './achievements';
+import { useLiveQuery } from 'dexie-react-hooks';
 
 export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [sync, setSync] = useState<SyncSettings | null>(() => loadSync());
@@ -34,7 +37,10 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
-  useEffect(() => { loadHcode(); }, [sync?.lastOk]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadHcode(); }, [sync?.lastOk]);
+
+  const achFeed = useLiveQuery(() =>
+    db.achievements.filter(a => !a.deletedAt).toArray().then(xs => xs.sort((a, b) => b.unlockedAt - a.unlockedAt).slice(0, 10)), [], []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function doRegister() {
     if (busy) return;
@@ -72,7 +78,28 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
               <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)', wordBreak: 'break-all' }}>{sync.server}</div>
             </div>
             <div className="pb-3">
-              <button className="dd-action strong" style={{ width: '100%' }} disabled={busy} onClick={doSync}>
+              {achFeed.length > 0 && (
+            <div className="dd-card p-4 mt-4">
+              <div className="text-sm font-semibold mb-1">Достижения семьи</div>
+              {achFeed.map(a => {
+                const d = achByCode(a.code);
+                if (!d) return null;
+                return (
+                  <div key={a.id} className="flex items-center gap-2" style={{ minHeight: 44 }}>
+                    <span style={{ fontSize: '1.25rem', flex: 'none' }}>{d.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[0.84375rem]"><b>{d.name}</b> · {d.desc}</div>
+                      <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>
+                        {a.nick ?? (a.userId === 'local' ? sync?.nickname : 'семья')} · {new Date(a.unlockedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <button className="dd-action strong" style={{ width: '100%' }} disabled={busy} onClick={doSync}>
                 {busy ? 'Синхронизирую…' : 'Синхронизировать'}
               </button>
               <button className="dd-action" style={{ width: '100%', marginTop: 8, color: 'var(--warn)' }}

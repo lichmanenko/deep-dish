@@ -11,6 +11,7 @@ import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, savePort
 import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS } from './lib';
 import { Sheet, Modal, Confirm, Collapse, TopSheet, SwipeRow, cx, BarcodeIcon as Icons_Barcode } from './ui';
 import { searchOff, saveOffHit, type OffHit } from './off';
+import { unlockSpecial } from './achievements';
 
 interface AddScreenProps {
   date: string;
@@ -712,6 +713,7 @@ function CreateRecipe({ open, onClose }: { open: boolean; onClose: () => void })
     if (!name || items.length === 0 || !parseFloat(yieldG)) { setErr('Нужны название, хотя бы один ингредиент и выход готового веса'); return; }
     if (unit === 'pc' && !parseFloat(pcs)) { setErr('Укажи, на сколько порций делится рецепт'); return; }
     await saveRecipe(name, items, parseFloat(yieldG), unit === 'pc' ? nPcs : 0);
+    unlockSpecial('recipe1').catch(() => {});
     onClose(); setName(''); setItems([]); setYield(''); setUnit('g'); setPcs(''); setErr('');
   }
 

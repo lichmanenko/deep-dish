@@ -4,8 +4,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { getProfile, saveProfile, calcNorma, track, getWeights, ensureDayNorma, type WeightPoint } from './store';
 import type { Profile } from './db';
 import { db } from './db';
-import { Segmented, Modal, cx } from './ui';
+import { Segmented, Modal, Sheet, cx } from './ui';
 import { fmt, todayISO, loadSettings, HIDDEN_CATS } from './lib';
+import { ACH } from './achievements';
 import { loadFlags, saveFlags, BASE_FLAG_CATS, type FlagSettings } from './banner';
 import { Toggle } from './ui';
 
@@ -185,6 +186,8 @@ export function ProfileScreen() {
         </div>
       </div>
 
+      <AchievementsCard />
+
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Распределение БЖУ</div>
         <Segmented value={macroModeOf(pr)} onChange={k => set({
@@ -336,5 +339,47 @@ function WhyNorma({ open, onClose, norma, fallback }: {
         <button className="dd-action strong" onClick={onClose}>Понятно</button>
       </div>
     </Modal>
+  );
+}
+
+
+function AchievementsCard() {
+  const [open, setOpen] = useState(false);
+  const mine = useLiveQuery(() => db.achievements.filter(a => a.userId === 'local' && !a.deletedAt).toArray(), [], []);
+  const byCode = new Map((mine ?? []).map(a => [a.code, a] as const));
+  const count = byCode.size;
+  return (
+    <div className="dd-card p-4 mb-4">
+      <div className="flex justify-between items-center">
+        <div className="dd-field-label" style={{ marginTop: 0 }}>Достижения</div>
+        <button className="dd-link-btn" onClick={() => setOpen(true)}>все ({count}/{ACH.length}) →</button>
+      </div>
+      <div className="grid grid-cols-6 gap-1.5 mt-1">
+        {ACH.filter(a => byCode.has(a.code)).slice(-12).reverse().map(a => (
+          <div key={a.code} className="text-center" title={a.name}>
+            <div style={{ fontSize: '1.375rem', lineHeight: 1.2 }}>{a.emoji}</div>
+          </div>
+        ))}
+      </div>
+      {count === 0 && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>здесь появятся награды за привычку — первая уже близко</div>}
+
+      <Sheet open={open} onClose={() => setOpen(false)} title="Достижения">
+        {ACH.map(a => {
+          const got = byCode.get(a.code);
+          return (
+            <div key={a.code} className="flex items-center gap-3" style={{ minHeight: 52, opacity: got ? 1 : .45 }}>
+              <span style={{ fontSize: '1.5rem', flex: 'none', filter: got ? undefined : 'grayscale(1)' }}>{a.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[0.84375rem] font-semibold">{a.name}</div>
+                <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>{got ? a.desc : a.hint}</div>
+              </div>
+              {got && <span className="dd-num text-[0.625rem] flex-none" style={{ color: 'var(--mut)' }}>
+                {new Date(got.unlockedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+              </span>}
+            </div>
+          );
+        })}
+      </Sheet>
+    </div>
   );
 }
