@@ -8,7 +8,6 @@ import { PALETTES, type DeviceSettings, todayISO } from './lib';
 import { exportJSON, exportCSV, download, wipeAll, track, importJSONText } from './store';
 import { Segmented, Confirm, Modal, TopSheet } from './ui';
 import { HelpSheet } from './help';
-import { cx } from './ui';
 
 export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
   settings: DeviceSettings; setSettings: (s: DeviceSettings) => void; onRestartOnboarding: () => void;
@@ -66,17 +65,7 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
         ]} />
       </div>
 
-      <div className="dd-card px-4 py-1 mb-4">
-        <div className="flex justify-between items-center" style={{ minHeight: 52 }}>
-          <div>
-            <div className="text-sm">Факты и достижения</div>
-            <div className="text-[0.6875rem]" style={{ color: 'var(--mut)' }}>редкие карточки-факты и тосты достижений семьи</div>
-          </div>
-          <button className={cx('dd-sw', (settings.factsOn ?? true) && 'on')} role="switch" aria-checked={settings.factsOn ?? true}
-            onClick={() => { setSettings({ ...settings, factsOn: !(settings.factsOn ?? true) }); track('facts_toggle', { on: !(settings.factsOn ?? true) }); }} />
-        </div>
-      </div>
-
+      
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Время приёма пищи</div>
         {(slots ?? []).map(s => (

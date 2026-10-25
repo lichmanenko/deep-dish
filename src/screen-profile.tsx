@@ -5,7 +5,7 @@ import { getProfile, saveProfile, calcNorma, track, getWeights, ensureDayNorma, 
 import type { Profile } from './db';
 import { db } from './db';
 import { Segmented, Modal, Sheet, cx } from './ui';
-import { fmt, todayISO, loadSettings, HIDDEN_CATS } from './lib';
+import { fmt, todayISO, loadSettings, saveSettings, HIDDEN_CATS } from './lib';
 import { ACH } from './achievements';
 import { loadFlags, saveFlags, BASE_FLAG_CATS, type FlagSettings } from './banner';
 import { Toggle } from './ui';
@@ -33,6 +33,12 @@ export function ProfileScreen() {
   const [flags, setFlags] = useState<FlagSettings>(() => loadFlags());
   const [flagsOpen, setFlagsOpen] = useState(false);
   const [achOpen, setAchOpen] = useState(false);
+  const [factsOn, setFactsOn] = useState(() => loadSettings().factsOn ?? true);
+  const toggleFacts = (v: boolean) => {
+    setFactsOn(v);
+    saveSettings({ ...loadSettings(), factsOn: v });
+    track('facts_toggle', { on: v });
+  };
   const catsList = useLiveQuery(async () =>
     [...new Set((await db.foods.filter(f => !f.deletedAt).toArray()).map(f => f.category))].filter(c => !HIDDEN_CATS.includes(c)).sort(), [], [] as string[]);
   const [baseline, setBaseline] = useState('');
@@ -164,10 +170,14 @@ export function ProfileScreen() {
       </div>
 
       <div className="dd-card px-4 py-1 mb-4">
-        <div className="dd-field-label" style={{ marginTop: 12 }}>Мотивация</div>
+        <div className="dd-field-label" style={{ marginTop: 12 }}>Мотивация и поддержка</div>
         <div className="flex justify-between items-center py-3">
-          <div className="text-sm">Мотивирующие баннеры</div>
+          <div className="text-sm">Подсказки и поддержка</div>
           <Toggle on={flags.praise || flags.warn} onChange={v => { const f = { ...flags, praise: v, warn: v }; setFlags(f); saveFlags(f); }} />
+        </div>
+        <div className="flex justify-between items-center pb-3">
+          <div className="text-sm">Факты и достижения</div>
+          <Toggle on={factsOn} onChange={toggleFacts} />
         </div>
         <div className="pb-3">
           <button className="dd-link-btn" style={{ padding: '6px 0' }} onClick={() => setFlagsOpen(!flagsOpen)}>
@@ -245,7 +255,7 @@ export function ProfileScreen() {
       <Sheet open={achOpen} onClose={() => setAchOpen(false)} title="Достижения">
         <AchievementsList />
         <p className="text-[0.625rem] mt-3 text-center" style={{ color: 'var(--mut)' }}>
-          считаются только живые записи приложения; пауза 90+ дней начинает заново
+          считаются только живые записи; пауза 90+ дней — заново
         </p>
       </Sheet>
 
@@ -354,30 +364,12 @@ function WhyNorma({ open, onClose, norma, fallback }: {
 
 
 function AchievementsRow({ onOpen }: { onOpen: () => void }) {
-  const mine = useLiveQuery(() => db.achievements.filter(a => a.userId === 'local' && !a.deletedAt).toArray(), [], []);
-  const byCode = new Map((mine ?? []).map(a => [a.code, a] as const));
-  const count = byCode.size;
-  const last = (mine ?? []).slice().sort((a, b) => b.unlockedAt - a.unlockedAt)[0];
-  const lastDef = last ? ACH.find(a => a.code === last.code) : undefined;
-  const recent = (mine ?? []).slice().sort((a, b) => b.unlockedAt - a.unlockedAt).slice(0, 6)
-    .map(a => ACH.find(d => d.code === a.code)).filter(Boolean);
+  const count = useLiveQuery(() => db.achievements.filter(a => a.userId === 'local' && !a.deletedAt).count(), [], 0);
   return (
-    <div style={{ borderTop: '1px solid var(--tr)', marginTop: 10, paddingTop: 10 }}>
-      <div className="flex justify-between items-center">
-        <span className="text-sm font-semibold">Достижения</span>
-        <button className="dd-link-btn" style={{ color: 'var(--mut)', fontSize: '0.6875rem', fontWeight: 500 }}
-          onClick={onOpen}>{count} из {ACH.length} →</button>
-      </div>
-      {recent.length > 0 && (
-        <div className="grid grid-cols-6 gap-1 mt-2">
-          {recent.map(d => (
-            <div key={d!.code} className="text-center" title={d!.name} style={{ fontSize: '1.5rem', lineHeight: 1.5 }}>{d!.emoji}</div>
-          ))}
-        </div>
-      )}
-      <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>
-        {lastDef ? <>последняя: <b style={{ color: 'var(--acc-fg)' }}>{lastDef.emoji} {lastDef.name}</b> — {lastDef.desc}</> : 'здесь появятся награды за живой дневник'}
-      </div>
+    <div className="flex justify-between items-center" style={{ minHeight: 44, borderTop: '1px solid var(--tr)', marginTop: 6, paddingTop: 2 }}>
+      <span className="text-sm">достижения</span>
+      <button className="dd-link-btn" style={{ color: 'var(--mut)', fontSize: '0.6875rem', fontWeight: 500 }}
+        onClick={onOpen}>{count} →</button>
     </div>
   );
 }
