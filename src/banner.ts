@@ -59,9 +59,8 @@ async function flagEntries(cats: string[]): Promise<Array<{ date: string; hour: 
  * Порог «разных дней» (В., 22.10): у новой истории (пара дней ведения) случайные
  * повторы вроде «кофе после обеда» не должны сразу объявляться слабым временем.
  */
-export async function detectDangerWindows(): Promise<Array<{ hour: number; count: number }>> {
-  const flags = loadFlags();
-  const es = await flagEntries(flags.cats);
+/** Окна срыва: час × ≥3 событий из ≥3 РАЗНЫХ дней (В., 24.10: 3 события одного-двух дней — не тренд). */
+export function windowsFromEntries(es: Array<{ date: string; hour: number }>): Array<{ hour: number; count: number }> {
   const byHour = new Map<number, { count: number; days: Set<string> }>();
   for (const e of es) {
     const cur = byHour.get(e.hour) ?? { count: 0, days: new Set<string>() };
@@ -72,6 +71,12 @@ export async function detectDangerWindows(): Promise<Array<{ hour: number; count
     .filter(([, v]) => v.count >= 3 && v.days.size >= 3)
     .map(([hour, v]) => ({ hour, count: v.count }))
     .sort((a, b) => b.count - a.count);
+}
+
+export async function detectDangerWindows(): Promise<Array<{ hour: number; count: number }>> {
+  const flags = loadFlags();
+  const es = await flagEntries(flags.cats);
+  return windowsFromEntries(es);
 }
 
 const PRAISE_BOLD = [

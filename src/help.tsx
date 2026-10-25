@@ -1,5 +1,8 @@
 // Справка «Как пользоваться» (v0.7.0): короткие карточки по экранам — по канону.
+// v0.7.4: без ссылок на внешние инструменты (Obsidian) — инструкция живёт здесь; пояснение «Обновить».
+import { useEffect } from 'react';
 import { Sheet } from './ui';
+import { track } from './store';
 
 const CARDS: Array<{ icon: string; title: string; lines: string[] }> = [
   {
@@ -30,7 +33,8 @@ const CARDS: Array<{ icon: string; title: string; lines: string[] }> = [
     icon: '⚖️', title: 'Вес и Apple Health',
     lines: [
       'Вес вводится в Профиле — каждое изменение и есть взвешивание.',
-      'С мостом Apple Health вес приезжает сам по расписанию (Семья → код моста, инструкция в Obsidian).',
+      'Мост Apple Health: умные весы сами попадают в приложение через «Здоровье». Один раз настроить: Семья → «Мост Apple Health» → «Скопировать код», затем на iPhone собрать команду в «Быстрых командах» по шагам из инструкции владельца семьи (iCloud-ссылка) и заменить в ней код своим. Автоматизация в 23:30 довезёт вес и калории.',
+      'Кнопка «Обновить» меняет код моста — это пароль команды. Нужна, если код мог попасть чужим (телефон в ремонте, показал другу): старый код перестаёт работать сразу, новый вставь в команду.',
       'Норма подстраивается под факт: приложение учитывает, что ты ел и как менялся вес.',
     ],
   },
@@ -46,6 +50,7 @@ const CARDS: Array<{ icon: string; title: string; lines: string[] }> = [
 ];
 
 export function HelpSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => { if (open) track('help_open', {}); }, [open]);
   return (
     <Sheet open={open} onClose={onClose} title="Как пользоваться">
       {CARDS.map(c => (

@@ -109,13 +109,13 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
         <div className="px-4 pt-1 dd-searchwrap">
           <input
             className="dd-input" placeholder={slot ? `Добавить в «${slot.name}»…` : 'Поиск: название или штрихкод…'}
-            value={q} onChange={e => setQ(e.target.value)} style={{ paddingRight: 76 }}
+            value={q} onChange={e => setQ(e.target.value)} style={{ paddingRight: 40 }}
           />
           <button className="dd-scanbtn" aria-label="Сканировать штрихкод" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open'); }}>
             <Icons_Barcode />
           </button>
-          {q && <button className="dd-searchclear" style={{ right: 52 }} aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
-          {offBusy && <span className="dd-searchdot" style={{ right: 76 }} aria-hidden="true" />}
+          {q && <button className="dd-searchclear" style={{ right: 56 }} aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
+          {offBusy && <span className="dd-searchdot" style={{ right: 88 }} aria-hidden="true" />}
         </div>
       </div>
 
@@ -202,8 +202,8 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
             onClose={() => setScanOpen(false)}
             onCode={ean => {
               setScanOpen(false);
-              track('scan_hit', {});
               const local = (catalog ?? []).find(i => i.kind === 'food' && i.food.barcode === ean);
+              track('scan_hit', { local: !!local }); // v0.7.4: нашлось ли в семейном каталоге
               if (local) { openItem(local); return; }
               // в каталоге нет — создать продукт с этим кодом (КБЖУ подтянутся из OFF)
               setScanEan(ean);
@@ -322,7 +322,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
       setWarn(true); return;
     }
     await addEntry({ date, slot: cur, kind: item.kind, refId: item.id, grams, per100: item.per100, timeEaten: time });
-    track('entry_added', { kind: item.kind, unit: item.unit, source: 'add-screen' });
+    track('entry_added', { kind: item.kind, unit: item.unit, source: 'add-screen', foodSource: item.kind === 'food' ? (item.food.source ?? 'custom') : 'recipe' }); // v0.7.4: воронка ввода — откуда продукт
     onSaved?.();
     onClose();
   }
