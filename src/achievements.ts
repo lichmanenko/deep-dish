@@ -24,15 +24,11 @@ export const ACH: AchDef[] = [
   { code: 'day66', emoji: '🧠', name: 'Автомат', desc: 'привычка закрепилась: два месяца подряд', hint: 'Записывай еду 66 дней подряд' },
   { code: 'gap_return', emoji: '🛫', name: 'Второе дыхание', desc: 'вернул(ся/ась) к дневнику после паузы', hint: 'Вернись к дневнику после паузы от 3 дней' },
   { code: 'count100', emoji: '💯', name: 'Сотня', desc: 'сто записей в дневнике', hint: 'Накопи 100 записей' },
-  { code: 'count1000', emoji: '🏆', name: 'Тысяча', desc: 'тысяча записей в дневнике', hint: 'Накопи 1000 записей' },
   { code: 'moment_week', emoji: '⏱', name: 'Вовремя', desc: 'каждую еду записывал(а) в момент еды всю неделю', hint: 'Неделя без вечерних пачко­вых записей' },
   { code: 'weigh_week', emoji: '⚖️', name: 'Ритм', desc: 'неделю взвешивался(ась) каждое утро', hint: 'Взвешивайся 7 дней подряд' },
   { code: 'w5', emoji: '🎉', name: 'Пятёрка', desc: 'минус 5% от стартового веса', hint: 'Сбрось 5% от стартового веса' },
   { code: 'w10', emoji: '🥇', name: 'Десятка', desc: 'минус 10% от стартового веса', hint: 'Сбрось 10% от стартового веса' },
   { code: 'day30', emoji: '🗓', name: 'Месяц в игре', desc: 'месяц стажа с первой записи', hint: '30 дней с первой записи' },
-  { code: 'day100', emoji: '💎', name: 'Сотня дней', desc: 'сто дней стажа', hint: '100 дней с первой записи' },
-  { code: 'day180', emoji: '🏔', name: 'Топ-3%', desc: 'полгода стажа', hint: '180 дней с первой записи' },
-  { code: 'day365', emoji: '🎯', name: 'Легенда', desc: 'год с дневником', hint: '365 дней с первой записи' },
 ];
 
 function isoOf(d: Date): string { const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
@@ -66,9 +62,9 @@ export async function detectAchievements(): Promise<string[]> {
   // ── эпоха живого дневника (В., 25.10, разбирательство №2): достижения считаем только по
   // записям, сделанным в приложении — импортированная история (MFP и пр.) не «накручивает»
   // стаж. Граница: первый запуск устройства (события метрик) либо ранний createdAt записей.
-  const firstOpen = (await db.events.orderBy('ts').first())?.ts;
-  const minCreated = entries.length ? Math.min(...entries.map(e => e.createdAt ?? 0)) : Infinity;
-  const eraStartMs = Math.min(firstOpen ?? Infinity, minCreated);
+  const firstOpen = (await db.events.where('name').equals('app_open').first())?.ts;
+  if (!firstOpen) return []; // нет и следа живого запуска — достижений не считаем (импорт не в зачёт)
+  const eraStartMs = firstOpen;
   const liveEntries = entries.filter(e => new Date(e.date + 'T00:00:00').getTime() >= new Date(eraStartMs).setHours(0, 0, 0, 0));
 
   // ── сегмент непрерывности: пауза ≥90 дней обнуляет достижения — хвостовая ИЛИ внутренняя
@@ -78,6 +74,15 @@ export async function detectAchievements(): Promise<string[]> {
   const segEntries = liveEntries.filter(e => e.date >= segStart);
   const days = [...new Set(segEntries.map(e => e.date))].sort();
   const segStartMs = new Date(segStart + 'T00:00:00').getTime();
+
+  // состав справочника меняется (В., 26.10): исчезнувшие ачивки гасим тихо,
+  // пользователь уведомлений не получает; для нас — событие в метрики
+  const removed = mine.filter(a => !a.deletedAt && !ACH.some(d => d.code === a.code));
+  if (removed.length) {
+    const nowR = Date.now();
+    await Promise.all(removed.map(a => db.achievements.update(a.id, { deletedAt: nowR, updatedAt: nowR })));
+    track('achievement_removed', { codes: removed.map(a => a.code).join(',') });
+  }
 
   // ачивки, заработанные до текущего сегмента (или до границы эпохи), — в tombstone
   const stale = mine.filter(a => !a.deletedAt && a.unlockedAt < segStartMs);
@@ -105,7 +110,7 @@ export async function detectAchievements(): Promise<string[]> {
   for (const [n, code] of Object.entries(streakMilestones)) {
     if (streak >= Number(n) && !have.has(code)) unlocked.push(code);
   }
-  const spanMilestones: Record<number, string> = { 30: 'day30', 100: 'day100', 180: 'day180', 365: 'day365' };
+  const spanMilestones: Record<number, string> = { 30: 'day30' };
   for (const [n, code] of Object.entries(spanMilestones)) {
     if (spanDays >= Number(n) && !have.has(code)) unlocked.push(code);
   }

@@ -7,6 +7,7 @@ import { track } from './store';
 import { db } from './db';
 import { achByCode } from './achievements';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Sheet } from './ui';
 
 export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [sync, setSync] = useState<SyncSettings | null>(() => loadSync());
@@ -19,6 +20,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [hcode, setHcode] = useState<string | null>(() => localStorage.getItem('dd-hcode'));
   const [stale, setStale] = useState(false);
   const [hErr, setHErr] = useState<'net' | 'old' | null>(null);
+  const [achOpen, setAchOpen] = useState(false);
 
   async function loadHcode() {
     const st = loadSync();
@@ -58,7 +60,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
     if (busy) return;
     setBusy(true); setMsg(null);
     try {
-      const r = await runSync();
+      const r = await runSync(true);
       setMsg(r.ok ? 'Синхронизация прошла.' : `Синк не удался: ${r.error}`);
       setSync(loadSync());
       track('sync_manual', {});
@@ -78,26 +80,12 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
               <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)', wordBreak: 'break-all' }}>{sync.server}</div>
             </div>
             <div className="pb-3">
-              {achFeed.length > 0 && (
-            <div className="dd-card p-4 mt-4">
-              <div className="text-sm font-semibold mb-1">Достижения семьи</div>
-              {achFeed.map(a => {
-                const d = achByCode(a.code);
-                if (!d) return null;
-                return (
-                  <div key={a.id} className="flex items-center gap-2" style={{ minHeight: 44 }}>
-                    <span style={{ fontSize: '1.25rem', flex: 'none' }}>{d.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[0.84375rem]"><b>{d.name}</b> · {d.desc}</div>
-                      <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>
-                        {a.nick ?? (a.userId === 'local' ? sync?.nickname : 'семья')} · {new Date(a.unlockedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+              <div className="flex justify-between items-center" style={{ minHeight: 44, borderTop: '1px solid var(--tr)' }}>
+            <span className="text-sm">Достижения семьи</span>
+            <button className="dd-link-btn" style={{ color: 'var(--mut)', fontSize: '0.6875rem', fontWeight: 500 }}
+              onClick={() => setAchOpen(true)}>последние →</button>
+          </div>
+
 
           <button className="dd-action strong" style={{ width: '100%' }} disabled={busy} onClick={doSync}>
                 {busy ? 'Синхронизирую…' : 'Синхронизировать'}
@@ -164,6 +152,23 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       {sync && isAdmin && <MetricsCard />}
+            <Sheet open={achOpen} onClose={() => setAchOpen(false)} title="Достижения семьи">
+              {achFeed.map(a => {
+                const d = achByCode(a.code);
+                if (!d) return null;
+                return (
+                  <div key={a.id} className="flex items-center gap-2" style={{ minHeight: 44 }}>
+                    <span style={{ fontSize: '1.25rem', flex: 'none' }}>{d.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[0.84375rem]"><b>{d.name}</b> · {d.desc}</div>
+                      <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>
+                        {a.nick ?? (a.userId === 'local' ? sync?.nickname : 'семья')} · {new Date(a.unlockedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </Sheet>
     </div>
   );
 }

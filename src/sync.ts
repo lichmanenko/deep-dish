@@ -53,18 +53,21 @@ export async function registerDevice(server: string, nickname: string, adminToke
 
 export interface SyncResult { ok: boolean; pushed: number; pulled: number; error?: string }
 
-/** один обмен: свои изменения + события → сервер; чужие/общие изменения → себе */
-export async function runSync(): Promise<SyncResult> {
+/** один обмен: свои изменения + события → сервер; чужие/общие изменения → себе.
+ *  force (ручная кнопка): пуш-окно расширяется на 7 дней назад — застрявшие из-за скачка
+ *  серверных часов записи доедут (LWW делает повторы идемпотентными) — срочный фикс 26.10. */
+export async function runSync(force = false): Promise<SyncResult> {
   const st = loadSync();
   if (!st) return { ok: false, pushed: 0, pulled: 0, error: 'синк не настроен' };
   const base = st.server.replace(/\/+$/, '');
 
   // собрать свои изменения новее lastPush
   const changes: Array<{ kind: string; body: unknown }> = [];
+  const pushFloor = force ? Math.max(0, st.lastPush - 7 * 86400000) : st.lastPush;
   for (const k of Object.keys(TABLES) as Kind[]) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (TABLES[k] as any)
-      .filter((x: { updatedAt: number }) => x.updatedAt > st.lastPush)
+      .filter((x: { updatedAt: number }) => x.updatedAt > pushFloor)
       .limit(2000).toArray() as Array<Record<string, unknown>>;
     for (const r of rows) {
       const body = { ...r };
@@ -109,10 +112,18 @@ export async function runSync(): Promise<SyncResult> {
   }
 
   const nowLocal = Date.now();
-  // Д2+Д5(ревью): since — последняя отданная запись (хвост за лимитом доедет следующим обменом);
-  // lastPush — по серверным часам (принятые записи не уедут эхом даже при расхождении локальных часов)
-  const since = (typeof r.maxUpdated === 'number' && r.changes?.length) ? r.maxUpdated : r.serverTime;
-  saveSync({ ...st, since, lastPush: Math.max(st.lastPush, r.serverTime), lastOk: nowLocal });
+  // Д2+Д5(ревью): since — последняя отданная запись; lastPush — по серверным часам.
+  // Скачок часов сервера (рестарт NAS): serverTime «из будущего» замораживает lastPush выше
+  // локальных updatedAt (записи перестают уезжать), «из прошлого» против сохранённого since —
+  // клиент перестаёт получать. Оба случая детектируем и разматываем (срочный фикс 26.10).
+  const clockAhead = r.serverTime - nowLocal > 5 * 60 * 1000;
+  let since = (typeof r.maxUpdated === 'number' && r.changes?.length) ? r.maxUpdated : r.serverTime;
+  if (st.since > r.serverTime) since = 0;          // серверное время поехало назад — полная перезагрузка
+  const lastPush = clockAhead ? Math.min(st.lastPush, nowLocal) : Math.max(st.lastPush, r.serverTime);
+  if (clockAhead || since === 0) {
+    (await import('./store')).track('clock_skew', { ahead: clockAhead, serverMinusLocal: r.serverTime - nowLocal });
+  }
+  saveSync({ ...st, since, lastPush, lastOk: nowLocal });
   return { ok: true, pushed: r.applied ?? changes.length, pulled };
 }
 

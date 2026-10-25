@@ -310,7 +310,7 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
       note={`${entries.length} поз. · ${fmt(t.kcal)} ккал · Б ${fmt(t.p)} · Ж ${fmt(t.f)} · У ${fmt(t.c)}`}>
       <div className="mb-3">
         {entries.map(e => (
-          <SlotLine key={e.id} e={e} dots={dotsByEntry.get(e.id)} />
+          <SlotLine key={e.id} e={e} dots={isSnack ? undefined : dotsByEntry.get(e.id)} />
         ))}
       </div>
 
@@ -377,8 +377,21 @@ function SlotCard({ slot, entries, marks, date, showTime, onAdd, onOpenInfo, onE
     track('slot_collapse', { slot: slot.id, on: !collapsed });
   };
   const sum = entries.reduce((s, e) => s + e.snapshot.kcal, 0);
+  const totalGrams = Math.round(entries.reduce((g, e) => g + e.grams, 0));
+  const plural = (n: number) => n === 1 ? 'запись' : n < 5 ? 'записи' : 'записей';
   return (
     <div className="dd-card px-4 pt-4 pb-3 mb-2.5" onClick={() => !hasEntries && onAdd(slot)}>
+      {collapsed ? (
+        /* свёрнутый приём: любой тап разворачивает (механика В.) */
+        <div className="flex justify-between items-baseline cursor-pointer" onClick={toggle}>
+          <span className="text-[0.9375rem] font-semibold flex items-baseline gap-2">
+            <span>{slot.emoji}</span>{slot.name}
+          </span>
+          <span className="dd-num text-xs" style={{ color: 'var(--mut)' }}>
+            {entries.length} {plural(entries.length)} · {fmt(totalGrams)} г · <b style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</b>
+          </span>
+        </div>
+      ) : (
       <div className="flex justify-between items-baseline mb-1 cursor-pointer" onClick={toggle}>
         <button className="text-[0.9375rem] font-semibold flex items-baseline gap-2 dd-slot-link"
           onClick={e => { e.stopPropagation(); onOpenInfo(slot); }}>
@@ -386,14 +399,11 @@ function SlotCard({ slot, entries, marks, date, showTime, onAdd, onOpenInfo, onE
         </button>
         <div className="text-xs dd-num flex items-center gap-1" style={{ color: 'var(--mut)' }}>
           {hasEntries
-            ? <>
-                <span className="dd-num font-bold" style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
-                {collapsed && <span>· {entries.length}</span>}
-              </>
+            ? <span className="dd-num font-bold" style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
             : (marks.some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : 'ничего')}
-          {hasEntries && <span style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform .2s' }}>⌄</span>}
         </div>
       </div>
+      )}
       {!collapsed && (
         <>
           {entries.map(e => (
