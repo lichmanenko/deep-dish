@@ -66,7 +66,7 @@ PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'p
 FAMILY_KINDS = {'achievements'}  # v0.7.6: публичные записи семьи (достижения — факт известен всем)
 ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS | FAMILY_KINDS
 
-app = FastAPI(title='Deep Dish sync', version='0.4.3')
+app = FastAPI(title='Deep Dish sync', version='0.4.4')
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
@@ -163,6 +163,7 @@ class SyncIn(BaseModel):
     since: int = 0
     changes: list[Change] = []
     events: list[dict[str, Any]] = []
+    client_now: int = 0  # часы устройства (телеметрия skew, v0.4.4)
 
 
 @app.get('/healthz')
@@ -297,6 +298,31 @@ def admin_metrics(days: int = 30, user: sqlite3.Row = Depends(auth)) -> dict[str
             'sessions': {'online': online_t, 'offline': online_f},
             'banners': {'shown': banner_shown, 'dismissed': banner_dismiss},
         }
+
+
+@app.get('/admin/telemetry')
+def admin_telemetry(since: int = 0, limit: int = 200,
+                    user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
+    """Синк-обсерваторность (v0.4.4, В., 26.10): телеметрия клиентов — события синка/ошибок/часов
+    + последние исходы по каждому пользователю. Только для администратора."""
+    if user['role'] != 'admin':
+        raise HTTPException(403, 'только администратор')
+    with db() as c:
+        names = ('sync_result', 'sync_fail', 'clock_skew', 'client_error')
+        q = ', '.join('?' * len(names))
+        evs = c.execute(f"SELECT ts, userId, name, props FROM events WHERE ts > ? AND name IN ({q}) ORDER BY ts DESC LIMIT ?",
+                        (since, *names, min(limit, 1000))).fetchall()
+        users = c.execute("SELECT userId, nickname FROM users").fetchall()
+        nick = {u['userId']: u['nickname'] for u in users}
+        # последний sync_result каждого
+        latest: dict[str, Any] = {}
+        for r in c.execute("SELECT ts, userId, props FROM events WHERE name = 'sync_result' ORDER BY ts DESC").fetchall():
+            if r['userId'] in latest:
+                continue
+            latest[r['userId']] = {'nick': nick.get(r['userId']), 'ts': r['ts'], **json.loads(r['props'] or '{}')}
+        return {'events': [{'ts': r['ts'], 'nick': nick.get(r['userId']), 'name': r['name'],
+                            'props': json.loads(r['props'] or '{}')} for r in evs],
+                'latestByUser': latest}
 
 
 @app.get('/off/search')
@@ -662,8 +688,8 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
     # Д2(ревью): курсор — последняя фактически отданная запись; выдача короче лимита — значит
     # исчерпана до «сейчас». Мусорные applied в базе на курсор не влияют (счёт по отданным строкам).
     max_updated = rows[-1]['applied'] if len(rows) >= 5000 else server_now
-    if applied or payload.events:
-        log.info('sync user=%s nick=%s applied=%d rejected=%d out=%d events=%d',
-                 uid, user['nickname'], applied, rejected, len(out), len(payload.events))
+    skew_ms = (payload.client_now - server_now) if payload.client_now else 0
+    log.info('sync user=%s nick=%s since=%d applied=%d rejected=%d out=%d events=%d skew_ms=%d',
+             uid, user['nickname'], payload.since, applied, rejected, len(out), len(payload.events), skew_ms)
     maybe_backup()
     return {'changes': out, 'serverTime': server_now, 'maxUpdated': max_updated, 'applied': applied, 'rejected': rejected}

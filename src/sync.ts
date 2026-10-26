@@ -64,6 +64,9 @@ export async function runSync(force = false): Promise<SyncResult> {
   // собрать свои изменения новее lastPush
   const changes: Array<{ kind: string; body: unknown }> = [];
   const pushFloor = force ? Math.max(0, st.lastPush - 7 * 86400000) : st.lastPush;
+  const localPending = (await db.entries.where('updatedAt').above(st.lastPush).count())
+    + (await db.foods.where('updatedAt').above(st.lastPush).count())
+    + (await db.weightLogs.where('updatedAt').above(st.lastPush).count());
   for (const k of Object.keys(TABLES) as Kind[]) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (TABLES[k] as any)
@@ -83,13 +86,19 @@ export async function runSync(force = false): Promise<SyncResult> {
     id: e.id, ts: e.ts, name: e.name, props: e.props,
   })).reverse();
 
-  const res = await fetch(base + '/sync', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
-    body: JSON.stringify({ since: st.since, changes, events: evs }),
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`сервер ответил ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetch(base + '/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
+      body: JSON.stringify({ since: st.since, changes, events: evs, client_now: Date.now() }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) throw new Error(`сервер ответил ${res.status}`);
+  } catch (e) {
+    (await import('./store')).track('sync_fail', { msg: String((e as Error).message).slice(0, 90), since: st.since, sent: changes.length });
+    throw e;
+  }
   const r = await res.json();
 
   // применить входящие
@@ -123,6 +132,12 @@ export async function runSync(force = false): Promise<SyncResult> {
   if (clockAhead || since === 0) {
     (await import('./store')).track('clock_skew', { ahead: clockAhead, serverMinusLocal: r.serverTime - nowLocal });
   }
+  // v0.4.4: синк-телеметрия (В., 26.10 — «понимать причины недолетов»); уедет попутным синком
+  (await import('./store')).track('sync_result', {
+    force, sent: changes.length, appliedByServer: r.applied ?? 0, rejectedByServer: r.rejected ?? 0,
+    pulled, sinceBefore: st.since, sinceAfter: since, lastPushBefore: st.lastPush, lastPushAfter: lastPush,
+    localPendingBeforeSync: localPending, skewMs: r.serverTime - nowLocal,
+  });
   saveSync({ ...st, since, lastPush, lastOk: nowLocal });
   return { ok: true, pushed: r.applied ?? changes.length, pulled };
 }
