@@ -8,7 +8,7 @@ const ScannerLayer = lazy(() => import('./scanner-layer').then(m => ({ default: 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
 import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
-import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS, matchTokens } from './lib';
+import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS, matchTokens, todayISO } from './lib';
 import { Sheet, Modal, Confirm, Collapse, TopSheet, SwipeRow, cx, BarcodeIcon as Icons_Barcode } from './ui';
 import { searchOff, saveOffHit, type OffHit } from './off';
 import { unlockSpecial } from './achievements';
@@ -308,9 +308,11 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
     setQty(isPc ? String(Math.round((g / 100) * 100) / 100) : String(Math.round(g)));
     const t = presetTime ?? nowHM();
     setTime(t);
-    // v0.7.8 (В., 26.10): без явного приёма — автоподбор по окну ±60 мин от времени приёма
-    let sid = slot && slot.id !== 'slot-snack' ? slot.id : '';
-    if (!sid) {
+    // v0.7.8 (В., 26.10): автоподбор по окну ±60 мин — только сегодняшним записям;
+    // прошлые дни не навязываем (вчерашний перекус не должен превращаться в «завтрак»)
+    const isToday = date === todayISO();
+    let sid = slot && slot.id !== 'slot-snack' ? slot.id : (isToday ? '' : 'slot-snack');
+    if (isToday && !sid) {
       const [h, m] = t.split(':').map(Number);
       const mins = h * 60 + m;
       const hit = slots.filter(x => x.defaultTime).find(x => {
@@ -347,7 +349,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
         ? `${fmt(item.per100.kcal)} ккал · Б ${fmt(item.per100.p)} · Ж ${fmt(item.per100.f)} · У ${fmt(item.per100.c)} на порцию`
         : `${fmt(item.per100.kcal)} ккал · Б ${fmt(item.per100.p)} · Ж ${fmt(item.per100.f)} · У ${fmt(item.per100.c)} на 100 г`}>
       <div className="dd-seg mb-3" style={{ display: 'flex' }}>
-        {slots.sort((a, b) => a.sortOrder - b.sortOrder).filter(s => s.id !== 'slot-snack').map(s => (
+        {slots.sort((a, b) => a.sortOrder - b.sortOrder).map(s => (
           <button key={s.id} style={{ flex: 1 }} className={cx(s.id === slotId && 'on')} onClick={() => setSlotId(s.id)}>{s.emoji} {s.name}</button>
         ))}
       </div>
