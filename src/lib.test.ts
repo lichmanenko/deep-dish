@@ -176,11 +176,13 @@ describe('факт-карточки', () => {
 
   it('первый факт доступен сразу, затем не чаще 1 в 3 дня', () => {
     vi.stubGlobal('localStorage', mk());
-    const t0 = Date.now();
-    expect(pickFact(ctx('2026-10-25'), { factsOn: true }, t0)).not.toBeNull();
-    expect(pickFact(ctx('2026-10-26'), { factsOn: true }, t0 + DAY)).toBeNull();   // день спустя — нет
-    expect(pickFact(ctx('2026-10-27'), { factsOn: true }, t0 + 2 * DAY)).toBeNull(); // два — нет
-    expect(pickFact(ctx('2026-10-28'), { factsOn: true }, t0 + 3 * DAY)).not.toBeNull(); // три — да
+    // даты теста и «сейчас» — из одной UTC-оси (Date.now() в другой зоне ломал арифметику)
+    const T0 = Date.parse('2026-10-25T12:00:00Z');
+    const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+    expect(pickFact(ctx(iso(T0)), { factsOn: true }, T0)).not.toBeNull();
+    expect(pickFact(ctx(iso(T0 + DAY)), { factsOn: true }, T0 + DAY)).toBeNull();       // день спустя — нет
+    expect(pickFact(ctx(iso(T0 + 2 * DAY)), { factsOn: true }, T0 + 2 * DAY)).toBeNull(); // два — нет
+    expect(pickFact(ctx(iso(T0 + 3 * DAY)), { factsOn: true }, T0 + 3 * DAY)).not.toBeNull(); // три — да
     vi.unstubAllGlobals();
   });
   it('личная веха пробивает график в день события', () => {

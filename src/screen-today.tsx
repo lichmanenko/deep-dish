@@ -130,7 +130,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
             Заполни профиль — появится дневная норма и кольцо. <b style={{ color: 'var(--acc-fg)' }}>Профиль →</b>
           </div>
         )}
-        <div className="dd-card p-4 mb-2">
+        <div className="dd-card p-4 mb-3">
           <div className="grid grid-cols-3 items-center">
             <div className="flex justify-center">
               <button aria-label="Переключить кольцо" onClick={toggleRingMode} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
@@ -156,11 +156,20 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
             </div>
             <div className="flex justify-center">
               {goal && <GoalRing goal={goal} compact={compact} onTap={() => setGoalInfo(true)} />}
+              {!goal && (
+                <button onClick={() => setGoalInfo(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  aria-label="Как получить кольцо прогресса">
+                  <div className="dd-num text-center" style={{ width: 96, height: 96, borderRadius: '50%', border: '2px dashed var(--tr)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--mut)' }}>
+                    <span style={{ fontSize: '1.25rem' }}>⚖️</span>
+                    <span style={{ fontSize: '0.625rem', marginTop: 2 }}>взвешивайся —<br/>появится кольцо</span>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex gap-2 mb-2">
+        <div className="flex gap-2 mb-3">
           <MacroChip v={totals.p} goal={norma?.p} k="белки" compact={compact} />
           <MacroChip v={totals.f} goal={norma?.f} k="жиры" compact={compact} />
           <MacroChip v={totals.c} goal={norma?.c} k="углев." compact={compact} />
@@ -325,9 +334,7 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
             const used = [...new Set([...dotsByEntry.values()].flat())];
             return (
               <div className="text-[0.6875rem] mt-1.5" style={{ color: 'var(--tx)' }}>
-                основной вклад: {used.map(m => (
-                  <span key={m} style={{ color: MACRO_COLOR[m] }}>●</span>
-                ))} {used.map(m => labels[m]).join(', ')} — точки у блюд выше
+                основной вклад:{' '} {used.map(m => (<span key={m}><span style={{ color: MACRO_COLOR[m] }}>●</span>{' '}{labels[m]} </span>))}— точки у блюд выше
               </div>
             );
           })()}

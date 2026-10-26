@@ -115,8 +115,8 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <button className="dd-scanbtn" aria-label="Сканировать штрихкод" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open'); }}>
             <Icons_Barcode />
           </button>
-          {q && <button className="dd-searchclear" style={{ right: 56 }} aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
-          {offBusy && <span className="dd-searchdot" style={{ right: 88 }} aria-hidden="true" />}
+          {q && <button className="dd-searchclear" style={{ right: 68 }} aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
+          {offBusy && <span className="dd-searchdot" style={{ right: 100 }} aria-hidden="true" />}
         </div>
       </div>
 
@@ -144,14 +144,14 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
             )}
             <Section title="⌕ Найдено" id="srch-found" defaultOpen>
               {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
-                <p className="text-sm mt-4 text-center" style={{ color: 'var(--mut)' }}>
+                <p className="text-sm mt-3 mb-0 text-center" style={{ color: 'var(--mut)' }}>
                   Ничего не нашлось.
                 </p>
               )}
               {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
-                <div className="flex gap-2 mb-3">
+                <div className="flex gap-2 mb-4 mt-3">
                   <button className="dd-action" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open', { from: 'empty' }); }}>📷 Сканировать штрихкод</button>
-                  {q.trim() && <button className="dd-action strong" onClick={() => setCreatingFood(true)}>＋ Создать «{q.trim()}»</button>}
+                  {q.trim() && <button className="dd-action strong" onClick={() => setCreatingFood(true)}>＋ {q.trim()}</button>}
                 </div>
               )}
               {searchRest.map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
@@ -306,10 +306,23 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
     const g = presetGrams ?? defaultGramsFor(item);
     // порционные: граммы хранятся как шт × 100 — в поле показываем штуки
     setQty(isPc ? String(Math.round((g / 100) * 100) / 100) : String(Math.round(g)));
-    setTime(presetTime ?? nowHM());
-    setSlotId(slot && slot.id !== 'slot-snack' ? slot.id : '');
+    const t = presetTime ?? nowHM();
+    setTime(t);
+    // v0.7.8 (В., 26.10): без явного приёма — автоподбор по окну ±60 мин от времени приёма
+    let sid = slot && slot.id !== 'slot-snack' ? slot.id : '';
+    if (!sid) {
+      const [h, m] = t.split(':').map(Number);
+      const mins = h * 60 + m;
+      const hit = slots.filter(x => x.defaultTime).find(x => {
+        const [sh, sm] = (x.defaultTime ?? '0:0').split(':').map(Number);
+        const d = Math.min(Math.abs(mins - (sh * 60 + sm)), 1440 - Math.abs(mins - (sh * 60 + sm))); // через полночь
+        return d <= 60;
+      });
+      if (hit) sid = hit.id;
+    }
+    setSlotId(!!sid && typeof sid === 'string' ? sid : '');
     setWarn(false);
-  }, [open, item, presetGrams, presetTime, slot, isPc]);
+  }, [open, item, presetGrams, presetTime, slot, isPc, slots]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!item) return null;
   const n = parseFloat(qty.replace(',', '.')) || 0;
@@ -333,6 +346,12 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
       note={isPc
         ? `${fmt(item.per100.kcal)} ккал · Б ${fmt(item.per100.p)} · Ж ${fmt(item.per100.f)} · У ${fmt(item.per100.c)} на порцию`
         : `${fmt(item.per100.kcal)} ккал · Б ${fmt(item.per100.p)} · Ж ${fmt(item.per100.f)} · У ${fmt(item.per100.c)} на 100 г`}>
+      <div className="dd-seg mb-3" style={{ display: 'flex' }}>
+        {slots.sort((a, b) => a.sortOrder - b.sortOrder).filter(s => s.id !== 'slot-snack').map(s => (
+          <button key={s.id} style={{ flex: 1 }} className={cx(s.id === slotId && 'on')} onClick={() => setSlotId(s.id)}>{s.emoji} {s.name}</button>
+        ))}
+      </div>
+
       <div className="dd-input-row">
         <div className="flex-1 min-w-0">
           <div className="dd-field-label" style={{ marginTop: 0 }}>{isPc ? 'Порций (шт)' : 'Вес порции, г'}</div>
@@ -354,11 +373,6 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
         </div>
       )}
 
-      <div className="dd-seg mt-3" style={{ display: 'flex' }}>
-        {slots.sort((a, b) => a.sortOrder - b.sortOrder).filter(s => s.id !== 'slot-snack').map(s => (
-          <button key={s.id} style={{ flex: 1 }} className={cx(s.id === slotId && 'on')} onClick={() => setSlotId(s.id)}>{s.emoji} {s.name}</button>
-        ))}
-      </div>
 
       <div className="mt-4 text-center" style={{ fontSize: '1.125rem', lineHeight: 1.35 }}>
         <b className="dd-num">{fmt(item.per100.kcal * k)} ккал</b>
@@ -427,7 +441,7 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
   async function save() {
     if (!valid || item?.kind !== 'food') return;
     await db.foods.update(item.id, {
-      name: name.trim(), brand: brand.trim() || undefined, category: cat || 'Свои продукты', unit,
+      name: name.trim(), brand: brand.trim() || undefined, category: cat || 'Прочее', unit,
       kcalPer100g: parseFloat(kcal) || 0, pPer100g: nums[1], fPer100g: nums[2], cPer100g: nums[3],
       portions: cleanPorts(),
       updatedAt: Date.now(),
@@ -485,7 +499,7 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
             : bjzuFull && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>из БЖУ получается {fmt(calcK)} ккал — если введёшь другое, блюдо получит ⚠️</div>}
           <div className="dd-field-label">Категория</div>
           <select className="dd-input dd-select" value={cat} onChange={e => setCat(e.target.value)}>
-            <option value="Свои продукты">Свои продукты</option>
+            <option value="Прочее">Прочее</option>
             {(cats ?? []).map(x => <option key={x} value={x}>{x}</option>)}
           </select>
         </>
@@ -534,7 +548,7 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
   const [unit, setUnit] = useState<'g' | 'pc'>('g');
   const [kcal, setKcal] = useState(''); const [p, setP] = useState(''); const [f, setF] = useState(''); const [c, setC] = useState('');
   const [ean, setEan] = useState('');
-  const [cat, setCat] = useState('Свои продукты');
+  const [cat, setCat] = useState('Прочее');
   const [catTouched, setCatTouched] = useState(false);
   const [kcalTouched, setKcalTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -548,7 +562,7 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
     if (!open) return;
     setName(initialName);
     const g = guessCategory(initialName);
-    setCat(g ?? 'Свои продукты'); setCatTouched(false);
+    setCat(g ?? 'Прочее'); setCatTouched(false);
     setKcalTouched(false); setOffState(null);
     if (initialEan) setEan(initialEan); // из сканера: поле кода заполнено — ищем КБЖУ сами
   }, [open, initialName, initialEan]);
@@ -604,7 +618,7 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
     });
     onClose(); reset();
   }
-  function reset() { setName(''); setBrand(''); setUnit('g'); setKcal(''); setP(''); setF(''); setC(''); setEan(''); setCat('Свои продукты'); setCatTouched(false); setKcalTouched(false); setSubmitted(false); setOffState(null); setPortsOpen(false); setPortRows([]); }
+  function reset() { setName(''); setBrand(''); setUnit('g'); setKcal(''); setP(''); setF(''); setC(''); setEan(''); setCat('Прочее'); setCatTouched(false); setKcalTouched(false); setSubmitted(false); setOffState(null); setPortsOpen(false); setPortRows([]); }
 
   return (
     <Sheet open={open} onClose={() => { onClose(); reset(); }} title="Добавить продукт"
@@ -644,7 +658,7 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
 
       <div className="dd-field-label">Категория{!catTouched && guessCategory(name) ? ' — подобрана по названию' : ''}</div>
       <select className="dd-input dd-select" value={cat} onChange={e => { setCatTouched(true); setCat(e.target.value); }}>
-        <option value="Свои продукты">Свои продукты</option>
+        <option value="Прочее">Прочее</option>
         {(cats ?? []).filter(x => !HIDDEN_CATS.includes(x)).map(x => <option key={x} value={x}>{x}</option>)}
       </select>
 
