@@ -416,7 +416,7 @@ function SlotCard({ slot, entries, marks, date, showTime, onAdd, onOpenInfo, onE
           {entries.map(e => (
             <EntryLine key={e.id} e={e} slot={slot} showTime={showTime} onClick={() => onEditEntry(e)} />
           ))}
-          <div className="dd-slot-add" onClick={e => { e.stopPropagation(); track('slot_add_tap', { slot: slot.id }); onAdd(slot); }}>＋ добавить</div>
+          <div className="dd-slot-add" onClick={e => { e.stopPropagation(); track('slot_add_tap', { slot: slot.id }); onAdd(slot); }}>＋ блюдо</div>
         </>
       )}
     </div>
