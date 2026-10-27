@@ -64,9 +64,12 @@ export async function runSync(force = false): Promise<SyncResult> {
   // собрать свои изменения новее lastPush
   const changes: Array<{ kind: string; body: unknown }> = [];
   const pushFloor = force ? Math.max(0, st.lastPush - 7 * 86400000) : st.lastPush;
-  const localPending = (await db.entries.where('updatedAt').above(st.lastPush).count())
-    + (await db.foods.where('updatedAt').above(st.lastPush).count())
-    + (await db.weightLogs.where('updatedAt').above(st.lastPush).count());
+  // filter, не where: updatedAt не в индексах схемы — where бросает «not indexed» (инцидент В., 26.10);
+  // объёмы семейные — полный проход недорог
+  const above = (arr: Array<{ updatedAt?: number }>) => arr.filter(x => (x.updatedAt ?? 0) > st.lastPush).length;
+  const localPending = above(await db.entries.toArray())
+    + above(await db.foods.toArray())
+    + above(await db.weightLogs.toArray());
   for (const k of Object.keys(TABLES) as Kind[]) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (TABLES[k] as any)
