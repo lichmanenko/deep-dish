@@ -64,6 +64,21 @@ if (bt.includes('Добро пожаловать') || bt.includes('онборд�
   await page.waitForTimeout(1200);
 }
 bt = await body();
+
+// страж версии (урок 26.10): e2e обязан гонать свежую сборку — версия в футере Настроек
+await page.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Настройки' && x.closest('nav'))?.click(); });
+await page.waitForTimeout(700);
+const expectVer = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+const gotVer = await page.evaluate(() => (document.body.innerText.match(/Deep Dish · v([\d.]+)/) || [])[1] || null);
+console.log('версия бандла:', gotVer, '(ожидалась', expectVer + ')');
+if (gotVer !== expectVer) {
+  console.log('E2E: FAIL — preview раздаёт старую сборку: перезапусти vite preview после build');
+  await ctx.close();
+  process.exit(1);
+}
+await page.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Сегодня' && x.closest('nav'))?.click(); });
+await page.waitForTimeout(600);
+
 ok('приложение открылось (Сегодня/таб-бар)', bt.includes('Сегодня') && bt.includes('Настройки'));
 const tabs = await page.evaluate(() => [...document.querySelectorAll('nav button')].map(b => b.textContent.trim()));
 ok('вкладки: ' + tabs.join('/'), tabs.length === 4);
@@ -131,4 +146,5 @@ ok('нет pageerror за прогон', errs.length === 0);
 if (errs.length) console.log('  ошибки:', JSON.stringify(errs));
 await ctx.close();
 console.log(failed === 0 ? 'E2E: OK' : `E2E: ${failed} провал(ов)`);
-process.exit(failed === 0 ? 0 : 1);
+process.exit(failed === 0 ? 0 : 1);
+
