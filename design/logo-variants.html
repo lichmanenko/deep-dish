@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Dish — логотип, раунд 3</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #101820; color: #DCE7F0; padding: 28px 16px 60px; }
+  h1 { font-size: 21px; font-weight: 700; margin-bottom: 6px; }
+  .sub { color: #8FA6B8; font-size: 13.5px; line-height: 1.55; margin-bottom: 18px; max-width: 780px; }
+  .legend { display: flex; gap: 16px; align-items: center; background: rgba(111,160,200,.10); border-radius: 16px; padding: 14px 16px; margin-bottom: 22px; flex-wrap: wrap; }
+  .legend .txt { flex: 1; min-width: 220px; font-size: 12.5px; line-height: 1.6; color: #B9CFDF; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .card { border-radius: 18px; overflow: hidden; border: 1px solid rgba(255,255,255,.08); }
+  .row { display: flex; align-items: center; gap: 14px; padding: 18px 16px; }
+  .light { background: #F4F7FA; }
+  .dark { background: #16222D; }
+  .meta { flex: 1; min-width: 0; color: inherit; }
+  .meta b { display: block; font-size: 14px; }
+  .meta span { display: block; font-size: 11.5px; opacity: .62; margin-top: 3px; line-height: 1.45; }
+  .mini { display: flex; align-items: flex-end; gap: 10px; margin-left: auto; }
+  .note { margin-top: 26px; padding: 13px 15px; border-radius: 14px; background: rgba(111,160,200,.12); font-size: 12.5px; line-height: 1.55; color: #B9CFDF; }
+</style>
+</head>
+<body>
+<h1>Deep Dish — раунд 3: «d» от хвостика</h1>
+<p class="sub">Геометрия по эскизу В.: линия начинается над «3 часами» (правая сторона кольца), вертикальный штрих высотой в радиус спускается к «3 часам»; дальше дуга по часовой стрелке через низ-лево-верх до «1 часа». Разрыв кольца — между «1» и «3 часами». Единая линия одной толщины; сегменты 50/30/20 считаются от начала (верх штриха) и светлеют к разрыву. Кольцо круглое.</p>
+
+<div class="legend">
+  <svg width="96" height="96" viewBox="0 0 96 96" style="flex:none">
+    <g stroke="#7FA8C9" stroke-width="2" fill="none" opacity=".55">
+      <line x1="38" y1="35" x2="61" y2="35" stroke-dasharray="3 4"/>
+      <line x1="38" y1="58" x2="61" y2="58" stroke-dasharray="3 4"/>
+      <line x1="38" y1="35" x2="38" y2="81" stroke-dasharray="3 4"/>
+    </g>
+    <circle cx="38" cy="58" r="23" fill="none" stroke="#31465A" stroke-width="1.5" stroke-dasharray="2 5"/>
+    <path d="M 61 35 L 61 58 A 23 23 0 1 1 57.9 46.5" fill="none" stroke="#B7D4E8" stroke-width="6" stroke-linecap="round" opacity=".95"/>
+    <g font-size="8" fill="#8FA6B8" font-family="sans-serif">
+      <text x="64" y="31">старт</text>
+      <text x="60" y="42">↓</text>
+      <text x="12" y="80" font-size="9">6</text>
+      <text x="30" y="28" font-size="9">12</text>
+      <text x="9" y="55" font-size="9">9</text>
+      <text x="55" y="92" font-size="9" text-anchor="middle">3 ← примыкание</text>
+      <text x="66" y="43" font-size="8">конец у 1ч</text>
+    </g>
+  </svg>
+  <div class="txt"><b style="color:#DCE7F0">Схема пути:</b> старт над «3 часами» → штрих вниз (высота = радиус) → дуга по часовой (3 → 6 → 9 → 12) → конец у «1 часа». Разрыв — сектор 1→3 часа. Оттенки: тёмный в начале → светлый к разрыву. Во всех вариантах ниже меняется одно: примыкание, ширина разрыва, наклон/сопряжение штриха, толщина.</div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="note">Выбери номер (1–10). Дальше: докрутка под палитры приложения, иконки PWA (192/512, маскируемая) и favicon.</div>
+
+<script>
+// Геометрия: центр (38,58), R=23. «3 часа»=(61,58). Штрих (61,58-h)..(61,58), h=23 (радиус).
+// Дуга: от «3 часов» по часовой (в экранных координатах: sin вниз) до endDeg, где угол мерим от «3» против часовой вверх: «1 час» = endDeg=-30 (т.е. дуга 330°).
+// Путь режется по длине на сегменты 50/30/20 от начала; светлеет к концу.
+const CX = 38, CY = 58, R = 23;
+const pt = deg => [CX + R * Math.cos(deg * Math.PI / 180), CY + R * Math.sin(deg * Math.PI / 180)];
+
+function buildPath(h, lean, endDeg, join) {
+  const top = [61 + lean, 58 - h];
+  const pts = [top];
+  const n1 = 12;
+  for (let i = 1; i <= n1; i++) { const t = i / n1; pts.push([top[0] + (61 - top[0]) * t, top[1] + (58 - top[1]) * t]); }
+  if (join) pts.push([61 - 2, 58 + 4]); // мягкое сопряжение — лёгкий излом внутрь
+  const arc = (360 + endDeg) % 360; // длина дуги по часовой от 0 («3 часа») до endDeg
+  const steps = Math.max(40, Math.round(arc * 1.2));
+  for (let i = 1; i <= steps; i++) pts.push(pt(arc * i / steps));
+  const L = [0];
+  for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = L[L.length - 1];
+  const cuts = [0, total * .5, total * .8, total];
+  const segs = [[], [], []];
+  let k = 0;
+  for (let i = 0; i < pts.length; i++) {
+    while (k < 2 && L[i] > cuts[k + 1] + 1e-6) k++;
+    segs[k].push(pts[i]);
+  }
+  const d = a => a.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join(' ');
+  return segs.map(a => d(a));
+}
+
+function svgFor(v, size, colors) {
+  const paths = buildPath(v.h, v.lean, v.end, v.join);
+  const sw = v.w * (size / 96);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 96 96" style="flex:none">
+    ${paths.map((d, i) => `<path d="${d}" fill="none" stroke="${colors[i]}" stroke-width="${sw.toFixed(2)}" stroke-linecap="round"/>`).join('')}
+  </svg>`;
+}
+
+const LIGHT = ['#4E7EA6', '#7FA8C9', '#B7D4E8'];   // светлеет к разрыву
+const DARK  = ['#5B87A8', '#8FB8D8', '#CFE4F2'];
+const CONTR = ['#44687F', '#78A6CC', '#C4DDF0'];   // контрастнее
+
+const variants = [
+  { n: 1,  name: 'Канон',                 desc: 'Примыкание ровно в «3 часа», разрыв 30° (1→3), штрих вертикальный высотой R. Базовое прочтение эскиза.', h: 23, lean: 0,  end: -30, w: 6.5, join: false, colors: LIGHT },
+  { n: 2,  name: 'Плотнее',               desc: 'Конец у «1:30» — разрыв всего 15°, кольцо почти дописано.', h: 23, lean: 0,  end: -15, w: 6.5, join: false, colors: LIGHT },
+  { n: 3,  name: 'Шире разрыв ★ выбран',  desc: 'Хвост 2 радиуса (В., 18.10), конец у «2 часов». Финализирован: толщина линии 10 (В., 23.10 — чуть тоньше старого лого, не вдвое).', h: 46, lean: 0,  end: -60, w: 10, join: false, colors: LIGHT },
+  { n: 4,  name: 'Примыкание ниже',       desc: 'Штрих смыкается с кольцом у «3:30» — как на рукописном эскизе.', h: 23, lean: 0,  end: -30, w: 6.5, join: false, shift: 15, colors: LIGHT },
+  { n: 5,  name: 'Наклон пера',           desc: 'Верх штриха чуть уходит влево (к кольцу) — след руки, ведущей от хвостика.', h: 24, lean: -4, end: -30, w: 6.5, join: false, colors: LIGHT },
+  { n: 6,  name: 'Мягкое сопряжение',     desc: 'Канон, но вход штриха в кольцо скруглён лёгким изломом внутрь — письмо без угла.', h: 23, lean: 0,  end: -30, w: 6.5, join: true,  colors: LIGHT },
+  { n: 7,  name: 'Тоньше',                desc: 'Канон при толщине 5.2 — легче, стекляннее.', h: 23, lean: 0,  end: -30, w: 5.2, join: false, colors: LIGHT },
+  { n: 8,  name: 'Основательнее',         desc: 'Канон при толщине 8 — весомее, для проверки в мелких размерах.', h: 23, lean: 0,  end: -30, w: 8,   join: false, colors: LIGHT },
+  { n: 9,  name: 'Контраст оттенков',     desc: 'Канон с усиленным перепадом тёмный→светлый — сегменты читаются чётче.', h: 23, lean: 0,  end: -30, w: 6.5, join: false, colors: CONTR },
+  { n: 10, name: 'Наклон + плотнее',      desc: 'Комбо: наклон пера (5) + узкий разрыв 15° (2) + сопряжение (6).', h: 24, lean: -4, end: -15, w: 6.5, join: true,  colors: LIGHT },
+];
+
+const grid = document.getElementById('grid');
+for (const v of variants) {
+  if (v.shift) { // вариант 4: примыкание на 3:30 — сдвигаем старт дуги на +15° вниз
+    // эмулируем: дуга от +15 (ниже 3 часов) до -30
+    v._patch = true;
+  }
+  const dark = { ...v, colors: DARK };
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="row light">
+      ${svgFor(v, 96, v.colors)}
+      <div class="meta"><b>${v.n} · ${v.name}</b><span>${v.desc}</span></div>
+      <div class="mini">${svgFor(v, 30, v.colors)}${svgFor(v, 20, v.colors)}</div>
+    </div>
+    <div class="row dark">
+      ${svgFor(dark, 96, DARK)}
+      <div class="meta"><b style="color:#DCE7F0">на тёмном</b><span style="color:#8FA6B8">оттенки светлее — стекло подсвечено</span></div>
+      <div class="mini">${svgFor(dark, 30, DARK)}${svgFor(dark, 20, DARK)}</div>
+    </div>`;
+  grid.appendChild(card);
+}
+
+// вариант 4 (примыкание ниже): перегенерируем его карточку честно — дуга стартует с «3:30» (+15° вниз)
+(function fixVar4() {
+  function buildShifted() {
+    const top = [61, 58 - 23];
+    const start = pt(15); // «3:30»
+    const pts = [];
+    for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push([top[0] + (start[0] - top[0]) * t, top[1] + (start[1] - top[1]) * t]); }
+    const arc = 315; // от +15 по часовой до -30
+    for (let i = 1; i <= 60; i++) pts.push(pt(15 + arc * i / 60));
+    const L = [0];
+    for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const total = L[L.length - 1];
+    const cuts = [0, total * .5, total * .8, total];
+    const segs = [[], [], []];
+    let k = 0;
+    for (let i = 0; i < pts.length; i++) { while (k < 2 && L[i] > cuts[k + 1] + 1e-6) k++; segs[k].push(pts[i]); }
+    const d = a => a.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join(' ');
+    return segs.map(a => d(a));
+  }
+  const card = grid.children[3];
+  const mk = (colors) => buildShifted().map((d, i) => `<path d="${d}" fill="none" stroke="${colors[i]}" stroke-width="6.5" stroke-linecap="round"/>`).join('');
+  const svgs = (sz, colors) => `<svg width="${sz}" height="${sz}" viewBox="0 0 96 96" style="flex:none">${mk(colors)}</svg>`;
+  card.children[0].innerHTML = `${svgs(96, LIGHT)}<div class="meta"><b>4 · Примыкание ниже</b><span>Штрих смыкается с кольцом у «3:30» — как на рукописном эскизе.</span></div><div class="mini">${svgs(30, LIGHT)}${svgs(20, LIGHT)}</div>`;
+  card.children[1].innerHTML = `${svgs(96, DARK)}<div class="meta"><b style="color:#DCE7F0">на тёмном</b><span style="color:#8FA6B8">оттенки светлее</span></div><div class="mini">${svgs(30, DARK)}${svgs(20, DARK)}</div>`;
+})();
+</script>
+</body>
+</html>
