@@ -116,12 +116,16 @@ export async function runSync(force = false): Promise<SyncResult> {
       }
       continue;
     }
+    if (ch.kind === 'achievements' && body.userId === st.userId) body.userId = 'local'; // свои — под локальный фильтр доски
     if (!(ch.kind in TABLES)) continue;
     if (PRIVATE_KINDS.has(ch.kind)) body.userId = 'local'; // личное всегда локальный пользователь
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (TABLES[ch.kind as Kind] as any).put(body);
     pulled++;
   }
+
+  // разовая санитария (В., 27.10: «0 достижений»): свои ачивки, приехавшие эхом с серверным uid
+  await db.achievements.where('userId').equals(st.userId).modify({ userId: 'local' }).catch(() => {});
 
   const nowLocal = Date.now();
   // Д2+Д5(ревью): since — последняя отданная запись; lastPush — по серверным часам.
