@@ -94,7 +94,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   }, [catalog]);
 
   function openItem(item: CatalogItem) {
-    setEditing({ item, presetGrams: defaultGramsFor(item), presetTime: slot?.defaultTime ?? nowHM() });
+    setEditing({ item, presetGrams: defaultGramsFor(item), presetTime: nowHM() }); // время записи — факт ввода; defaultTime слота классифицирует приём, не время (В., 27.10)
   }
 
   return (
@@ -173,7 +173,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
                       per100: { kcal: f.kcalPer100g, p: f.pPer100g, f: f.fPer100g, c: f.cPer100g },
                       food: f,
                     },
-                    presetGrams: undefined, presetTime: slot?.defaultTime ?? nowHM(),
+                    presetGrams: undefined, presetTime: nowHM(),
                   });
                 }}>
                 <div className="min-w-0 flex-1">

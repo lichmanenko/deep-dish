@@ -7,7 +7,7 @@ import { track } from './store';
 import { db } from './db';
 import { achByCode } from './achievements';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Sheet } from './ui';
+import { Sheet, cx } from './ui';
 
 export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [sync, setSync] = useState<SyncSettings | null>(() => loadSync());
@@ -21,6 +21,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [stale, setStale] = useState(false);
   const [hErr, setHErr] = useState<'net' | 'old' | null>(null);
   const [achOpen, setAchOpen] = useState(false);
+  const [achFilter, setAchFilter] = useState('all');
 
   async function loadHcode() {
     const st = loadSync();
@@ -153,7 +154,13 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
 
       {sync && isAdmin && <MetricsCard />}
             <Sheet open={achOpen} onClose={() => setAchOpen(false)} title="Достижения семьи">
-              {achFeed.map(a => {
+              <div className="dd-seg mb-2" style={{ display: 'flex' }}>
+                <button style={{ flex: 1 }} className={cx(achFilter === 'all' && 'on')} onClick={() => setAchFilter('all')}>все</button>
+                {[...new Set(achFeed.map(a => a.nick ?? (a.userId === 'local' ? sync?.nickname : a.userId.slice(0, 6))).filter(Boolean))].map(n => (
+                  <button key={n} style={{ flex: 1 }} className={cx(achFilter === n && 'on')} onClick={() => setAchFilter(n!)}>{n}</button>
+                ))}
+              </div>
+              {achFeed.filter(a => achFilter === 'all' || (a.nick ?? (a.userId === 'local' ? sync?.nickname : a.userId.slice(0, 6))) === achFilter).map(a => {
                 const d = achByCode(a.code);
                 if (!d) return null;
                 return (
