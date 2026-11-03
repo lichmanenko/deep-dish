@@ -1,7 +1,7 @@
 {
   "name": "deep-dish",
   "private": true,
-  "version": "0.7.12.2",
+  "version": "0.7.13",
   "type": "module",
   "scripts": {
     "dev": "vite",

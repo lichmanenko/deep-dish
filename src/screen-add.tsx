@@ -48,6 +48,8 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   const allSlots = useLiveQuery(() => db.slots.filter((s: Slot) => !s.deletedAt).sortBy('sortOrder'), [], [] as Slot[]);
 
   const searching = q.trim().length > 0;
+  // В6: легенда БЖУ при первом входе (один раз, localStorage)
+  const [bjuHint, setBjuHint] = useState(() => !localStorage.getItem('dd-bju-hint'));
   const ql = normE(q.trim());
 
   const { recentItems } = useMemo(() => {
@@ -107,6 +109,9 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <button className="dd-link-btn" onClick={() => setCreatingRecipe(true)}>+ рецепт</button>
           <button className="dd-link-btn" onClick={() => setCreatingFood(true)}>＋ продукт</button>
         </div>
+                {slot && (
+          <div className="px-4 text-[0.75rem]" style={{ color: 'var(--mut)' }}>добавляем в «{slot.emoji} {slot.name}» — нажми на продукт, чтобы записать</div>
+        )}
         <div className="px-4 pt-1 dd-searchwrap">
           <input
             className="dd-input" placeholder={slot ? `Добавить в «${slot.name}»…` : 'Поиск: название или штрихкод…'}
@@ -119,6 +124,16 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           {offBusy && <span className="dd-searchdot" style={{ right: 100 }} aria-hidden="true" />}
         </div>
       </div>
+
+      {bjuHint && !searching && (
+        <div className="px-4">
+          <div className="dd-card p-3 text-center text-[0.75rem] mb-3" style={{ color: 'var(--mut)' }}>
+            <b style={{ color: 'var(--tx)' }}>Б</b> — белки · <b style={{ color: 'var(--tx)' }}>Ж</b> — жиры · <b style={{ color: 'var(--tx)' }}>У</b> — углеводы
+            <button className="dd-link-btn" style={{ display: 'block', margin: '6px auto 0' }}
+              onClick={() => { localStorage.setItem('dd-bju-hint', '1'); setBjuHint(false); }}>понятно</button>
+          </div>
+        </div>
+      )}
 
       <div className="px-4">
         {mealList.length > 0 && (

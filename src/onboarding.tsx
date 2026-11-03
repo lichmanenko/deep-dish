@@ -19,8 +19,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       </div>
 
       <div className="dd-onb-body">
-        {step === 0 && <Step emoji="🍽" title="Добро пожаловать в Deep Dish" text="Дневник питания и веса для всей семьи. Главный принцип — запись еды за пару секунд, всё остальное приложение берёт на себя." />}
-        {step === 1 && <Step emoji="⚡️" title="Как вносить еду" text="Внизу — слоты приёмов пищи. «+» на карточке добавляет с последней порцией, вес поправится в той же карточке. Частое лежит в «Недавних», доверенное — отмечай ⭐." />}
+        {step === 0 && <Step emoji="🍽" title="Добро пожаловать в Deep Dish" text="Это дневник питания для твоей семьи. Нажала «＋ еда» — выбрала продукт — готово. Приложение посчитает калории само." />}
+        {step === 1 && <Step emoji="⚡️" title="Как вносить еду" text="На главном экране — карточки приёмов: Завтрак, Обед, Ужин. Нажми «＋ блюдо» на карточке — откроется поиск.
+
+Нашла продукт — нажми на него. Граммы и время подставятся сами, можно поправить.
+
+Любимые продукты отмечай ⭐ — они всегда под рукой." />}
         {step === 2 && <GoalStep onDone={next} skip={next} />}
         {step === 3 && <InstallStep onDone={onDone} />}
       </div>
@@ -42,7 +46,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
 function Step({ emoji, title, text }: { emoji: string; title: string; text: string }) {
   return (
-    <div className="text-center pt-6">
+    <div className="text-center flex flex-col items-center justify-center" style={{ minHeight: '48vh' }}>
       <div className="text-[3.25rem] mb-5">{emoji}</div>
       <h2 className="text-[1.4375rem] font-bold tracking-tight">{title}</h2>
       <p className="text-sm mt-3 leading-relaxed px-2" style={{ color: 'var(--mut)' }}>{text}</p>
