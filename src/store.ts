@@ -252,6 +252,30 @@ export interface Norma { kcal: number; p: number; f: number; c: number; bmr: num
 
 /** v0.7.11: эффективный темп цели. Классика — paceKgPerWeek; режим «целевой вес» —
  *  (текущий − цель) / недель до даты. Возвращает null, если темп не определяется. */
+/** v0.7.12 (В., 03.11): прогноз кольца цели-по-весу — чистая функция под тестами.
+ *  Средний темп за прошедшее × всего недель = прогноз; % = прогноз/цель; обратный знак → 0. */
+export function forecastPct(pr: Profile, currentKg: number | undefined): {
+  pct: number; avgPw: number; forecastKg: number;
+} | null {
+  if (pr.goalMode !== 'weight' || !pr.goalWeightKg || !pr.goalSetDateIso || !pr.goalDueDateIso || currentKg == null) return null;
+  const DAY = 86400000;
+  const setT = new Date(pr.goalSetDateIso + 'T00:00:00').getTime();
+  const dueT = new Date(pr.goalDueDateIso + 'T00:00:00').getTime();
+  if (dueT <= setT) return null;
+  const startKg = pr.goalStartKg ?? currentKg;
+  const totalWeeks = Math.max(1, (dueT - setT) / (7 * DAY));
+  const weeksPassed = Math.min(totalWeeks, Math.max(0.14, (Math.min(Date.now(), dueT) - setT) / (7 * DAY)));
+  if (weeksPassed < 0.5) return null;
+  const targetDiff = pr.goal === 'lose' ? startKg - pr.goalWeightKg : pr.goalWeightKg - startKg;
+  const doneSoFar = pr.goal === 'lose' ? startKg - currentKg : currentKg - startKg;
+  if (targetDiff <= 0.1) return null;
+  const avgPace = doneSoFar / weeksPassed;
+  const forecastDiff = avgPace * totalWeeks;
+  const pct = forecastDiff <= 0 ? 0 : Math.min(200, Math.round(forecastDiff / targetDiff * 100));
+  const forecastKg = Math.round((pr.goal === 'lose' ? startKg - forecastDiff : startKg + forecastDiff) * 10) / 10;
+  return { pct, avgPw: Math.round(avgPace * 100) / 100, forecastKg };
+}
+
 export function effectivePace(pr: Profile, currentWeightKg?: number): number | null {
   if (pr.goal !== 'lose' && pr.goal !== 'gain') return null;
   if (pr.goalMode !== 'weight' || !pr.goalWeightKg || !pr.goalDueDateIso || !currentWeightKg) {
@@ -456,6 +480,11 @@ export interface GoalProgress {
 
   /** v0.7.11: true = кольцо показывает % пути к целевому весу (режим «по весу») */
   isWay?: boolean;
+
+  /** v0.7.12: прогнозный режим — средний темп за прошедшее и прогнозный вес к целевой дате */
+  isForecast?: boolean;
+  avgPw?: number;
+  forecastKg?: number;
 }
 
 export async function goalProgress(date = todayISO()): Promise<GoalProgress | null> {
@@ -470,16 +499,17 @@ export async function goalProgress(date = todayISO()): Promise<GoalProgress | nu
   const tr = weightTrend(win);
   if (!tr) return null;
   const plan = Math.abs(effectivePace(pr, win[0].kg) ?? pr.paceKgPerWeek ?? 0.5);
-  // v0.7.11: режим «целевой вес» — кольцо показывает % ПУТИ от стартового к целевому весу
-  if (pr.goalMode === 'weight' && pr.goalWeightKg) {
-    const startKg = win[0].kg;
-    const lastKg = win[win.length - 1].kg;
-    const totalDrop = pr.goal === 'lose' ? startKg - pr.goalWeightKg : pr.goalWeightKg - startKg;
-    const done = pr.goal === 'lose' ? startKg - lastKg : lastKg - startKg;
-    if (totalDrop > 0.1) {
-      const pctWay = Math.max(0, Math.min(100, Math.round(done / totalDrop * 100)));
-      return { mode: pr.goal, planPw: Math.abs(effectivePace(pr, lastKg) ?? plan), trendPw: Math.round(tr.slope * 700) / 100, pct: pctWay, tooFast: false, isWay: true };
-    }
+  // v0.7.12 (В., 03.11): режим «целевой вес» — кольцо показывает ПРОГНОЗ: если текущий средний
+  // темп продержится до целевой даты, какой % цели будет закрыт.
+  // Средний темп = (старт − текущий) / прошедших недель; прогноз = темп × всего недель;
+  // % = прогнозная разница / целевая разница. Противоположный знак (хотели худеть, набираем) → 0.
+  const fc = forecastPct(pr, win[win.length - 1].kg);
+  if (fc) {
+    return {
+      mode: pr.goal, planPw: Math.abs(effectivePace(pr, win[win.length - 1].kg) ?? plan),
+      trendPw: Math.round(tr.slope * 700) / 100, pct: fc.pct,
+      tooFast: fc.pct > 130, isForecast: true, avgPw: fc.avgPw, forecastKg: fc.forecastKg,
+    };
   }
   const trendPw = Math.round(tr.slope * 700) / 100;
   const aligned = (pr.goal === 'lose' && trendPw <= 0) || (pr.goal === 'gain' && trendPw >= 0);

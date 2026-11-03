@@ -246,7 +246,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
         {(() => {
           if (!goal) return <p className="dd-modal-text">Кольцо появляется при цели «худеть» или «набирать». При «держать» оно скрыто.</p>;
           const rows: Array<[string, string]> = [
-            goal.isWay
+            goal.isForecast ? ['Как считаем прогноз', `средний темп за прошедшее (${String(goal.avgPw ?? 0).replace('.', ',')} кг/нед) × всего недель; к целевой дате будет ~${goal.forecastKg} кг; кольцо = прогнозная разница / целевая`] : goal.isWay
               ? ['Цель по весу', `кольцо — % пути от стартового веса к целевому; темп посчитан из даты`]
               : ['Плановый темп', `${String(goal.planPw).replace('.', ',')} кг/нед — выбран в профиле`],
             ['Фактический тренд', `${goal.mode === 'lose' ? (goal.trendPw < 0 ? '−' : '+') : (goal.trendPw >= 0 ? '+' : '−')}${String(Math.abs(goal.trendPw)).replace('.', ',')} кг/нед за 8 недель`],
@@ -521,7 +521,7 @@ function GoalRing({ goal, compact, onTap }: { goal: GoalProgress; compact?: bool
       </svg>
       <div className="dd-ring-val">
         <div className="text-lg font-extrabold dd-num">{label}</div>
-        {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>{goal.isWay ? 'пути' : 'план'}</div>}
+        {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>{goal.isForecast ? 'прогноз' : goal.isWay ? 'пути' : 'план'}</div>}
       </div>
     </button>
   );
