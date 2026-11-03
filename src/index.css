@@ -181,12 +181,16 @@ input[type=time].dd-input { padding: 0 8px; }
 /* AlwaysOn-зона «Сегодня» (В., 24.10): кольца+чипы+кнопка закреплены, приёмы скроллятся под ними */
 .dd-alwayson {
   position: sticky; top: 0; z-index: 20;
-  /* полупрозрачность + блюр: зона читаема, но не глушит радиальный фон страницы (В., 03.11: «чёрный квадрат» в тёмной) */
+  /* В., 03.11 (второй заход): прямоугольник убираем совсем — верх зоны полностью прозрачен,
+     матовость даёт только blur («фростед-гласс»), и лишь нижние ~20% мягко затемняются фоном,
+     чтобы приёмы, проезжая под зоной, растворялись, а не упирались в край */
   background: linear-gradient(180deg,
-    color-mix(in srgb, var(--bg) 92%, transparent) 0%,
-    color-mix(in srgb, var(--bg) 88%, transparent) 76%,
-    transparent 100%);
-  backdrop-filter: blur(3px);
+    transparent 0%,
+    transparent 58%,
+    color-mix(in srgb, var(--bg) 38%, transparent) 76%,
+    var(--bg) 100%);
+  backdrop-filter: blur(10px) saturate(1.15);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
   padding: 6px 0 8px;
 }
 
