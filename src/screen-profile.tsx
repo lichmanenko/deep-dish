@@ -71,7 +71,11 @@ export function ProfileScreen() {
 
   async function save() {
     const gw = parseFloat(goalWeightInput.replace(',', '.'));
-    await saveProfile({ ...pr!, goalWeightKg: Number.isFinite(gw) ? gw : undefined });
+    const curW = pr!.weightKg ?? (weights.length ? weights[weights.length - 1].kg : undefined);
+    // v0.7.12: первое сохранение режима «по весу» фиксирует старт — дату установки и вес на неё
+    const startPatch = pr!.goalMode === 'weight' && !pr!.goalSetDateIso && curW != null
+      ? { goalSetDateIso: todayISO(), goalStartKg: curW } : {};
+    await saveProfile({ ...pr!, goalWeightKg: Number.isFinite(gw) ? gw : undefined, ...startPatch });
     setBaseline(JSON.stringify(pr!));
     setSaved(true);
     // v0.5.0: день ещё не закончился — сегодняшний снапшот нормы перезаписываем (прошлые не трогаем)

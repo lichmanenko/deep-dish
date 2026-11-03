@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS, matchTokens } from './lib';
 import { windowsFromEntries } from './banner';
-import { dedupeKey, effectivePace } from './store';
+import { dedupeKey, effectivePace, forecastPct } from './store';
 import { pickFact, markFactClosed } from './facts';
 import { lastSegmentStart } from './achievements';
 
@@ -301,5 +301,28 @@ describe('цель в килограммах (0.7.11)', () => {
   it('цель уже достигнута → темп 0 (норма без дефицита)', () => {
     const due = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     expect(effectivePace(pr({ goalMode: 'weight', goalWeightKg: 95, goalDueDateIso: due }), 95)).toBe(0);
+  });
+});
+
+describe('кольцо-прогноз цели по весу (В., 03.11)', () => {
+  const d = (offDays: number) => new Date(Date.now() + offDays * 86400000).toISOString().slice(0, 10);
+  const pr = (o: Record<string, unknown>) => ({ goal: 'lose', goalMode: 'weight', goalWeightKg: 85, goalSetDateIso: d(-28), goalDueDateIso: d(56), goalStartKg: 96, ...o }) as import('./db').Profile;
+  it('96→85, 4 нед прошло из 12: темп −0,5/нед → прогноз 90 кг → 50%', () => {
+    // фактический вес сейчас 94 (−2 за 4 нед → −0,5/нед), всего 12 нед → прогноз −6 → 90 кг; целевая разница 11 → ~55%
+    const r = forecastPct(pr({}), 94);
+    expect(r.pct).toBeGreaterThanOrEqual(50);
+    expect(r.pct).toBeLessThanOrEqual(60);
+    expect(r.forecastKg).toBeCloseTo(90, 0);
+  });
+  it('противоположный знак → 0%', () => {
+    const r = forecastPct(pr({}), 98); // набираем вместо похудения
+    expect(r.pct).toBe(0);
+  });
+  it('перевыполнение прогноза не режется жёстко (до 200)', () => {
+    const r = forecastPct(pr({ goalSetDateIso: d(-84), goalDueDateIso: d(-7) }), 88); // 11 из 12 недель прошло, −8 из 11
+    expect(r.pct).toBeGreaterThan(60);
+  });
+  it('без даты установки — null (кольцо не прогнозирует)', () => {
+    expect(forecastPct(pr({ goalSetDateIso: undefined }), 94)).toBeNull();
   });
 });
