@@ -111,6 +111,9 @@ export interface Profile {
   goal: 'none' | 'lose' | 'maintain' | 'gain';
   paceKgPerWeek: number;
   goalWeightKg?: number;
+  /** v0.7.11: режим цели — 'pace' (кг/нед) или 'weight' (целевой вес к дате); темп выводится сам */
+  goalMode?: 'pace' | 'weight';
+  goalDueDateIso?: string;
   /** распределение макросов: режим пресета или 'custom' с ручными процентами */
   macroMode?: 'balanced' | 'mfp' | 'protein' | 'custom';
   /** целевая дата цели (YYYY-MM-DD); фиксируется автоматически от темпа, для кольца выполнения цели */

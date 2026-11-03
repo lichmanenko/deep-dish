@@ -250,6 +250,19 @@ const ACT: Record<Profile['activity'], number> = { sedentary: 1.2, light: 1.375,
 
 export interface Norma { kcal: number; p: number; f: number; c: number; bmr: number; tdee: number; adj: number; }
 
+/** v0.7.11: эффективный темп цели. Классика — paceKgPerWeek; режим «целевой вес» —
+ *  (текущий − цель) / недель до даты. Возвращает null, если темп не определяется. */
+export function effectivePace(pr: Profile, currentWeightKg?: number): number | null {
+  if (pr.goal !== 'lose' && pr.goal !== 'gain') return null;
+  if (pr.goalMode !== 'weight' || !pr.goalWeightKg || !pr.goalDueDateIso || !currentWeightKg) {
+    return pr.paceKgPerWeek ?? null;
+  }
+  const weeks = Math.max(1, (new Date(pr.goalDueDateIso + 'T00:00:00').getTime() - Date.now()) / (7 * 86400000));
+  const delta = pr.goal === 'lose' ? currentWeightKg - pr.goalWeightKg : pr.goalWeightKg - currentWeightKg;
+  if (delta <= 0) return 0; // цель уже достигнута/перевыполнена
+  return Math.round((delta / weeks) * 100) / 100;
+}
+
 export function calcNorma(pr: Profile): Norma | null {
   const weight = pr.weightKg ?? (pr.goalWeightKg && pr.goal === 'maintain' ? pr.goalWeightKg : undefined);
   if (weight === undefined && !(pr.formula === 'manual' && pr.manualTdee)) return null; // нет точки отсчёта
@@ -262,8 +275,9 @@ export function calcNorma(pr: Profile): Norma | null {
     tdee = bmr * ACT[pr.activity];
   }
   let adj = 0;
-  if (pr.goal === 'lose') adj = -Math.min(Math.round(pr.paceKgPerWeek * 7700 / 7), 750);
-  if (pr.goal === 'gain') adj = Math.min(Math.round(pr.paceKgPerWeek * 7700 / 7), 500);
+  const pace = effectivePace(pr, weight) ?? 0; // v0.7.11: темп из режима цели
+  if (pr.goal === 'lose') adj = -Math.min(Math.round(pace * 7700 / 7), 750);
+  if (pr.goal === 'gain') adj = Math.min(Math.round(pace * 7700 / 7), 500);
   let kcal = tdee + adj;
   kcal = Math.max(Math.round(kcal / 10) * 10, Math.round(bmr * 1.1));
   const pct = pr.macroPct ?? { p: 25, f: 30, c: 45 };
@@ -439,6 +453,9 @@ export interface GoalProgress {
   trendPw: number;  // фактический тренд со знаком, кг/нед
   pct: number;      // 0..∞, 100 = план; |тренд|/план при совпадении направления
   tooFast: boolean; // опережение плана в 1.5+ раза — предупреждение
+
+  /** v0.7.11: true = кольцо показывает % пути к целевому весу (режим «по весу») */
+  isWay?: boolean;
 }
 
 export async function goalProgress(date = todayISO()): Promise<GoalProgress | null> {
@@ -452,7 +469,18 @@ export async function goalProgress(date = todayISO()): Promise<GoalProgress | nu
   if (win.length < 2) return null;
   const tr = weightTrend(win);
   if (!tr) return null;
-  const plan = Math.abs(pr.paceKgPerWeek || 0.5);
+  const plan = Math.abs(effectivePace(pr, win[0].kg) ?? pr.paceKgPerWeek ?? 0.5);
+  // v0.7.11: режим «целевой вес» — кольцо показывает % ПУТИ от стартового к целевому весу
+  if (pr.goalMode === 'weight' && pr.goalWeightKg) {
+    const startKg = win[0].kg;
+    const lastKg = win[win.length - 1].kg;
+    const totalDrop = pr.goal === 'lose' ? startKg - pr.goalWeightKg : pr.goalWeightKg - startKg;
+    const done = pr.goal === 'lose' ? startKg - lastKg : lastKg - startKg;
+    if (totalDrop > 0.1) {
+      const pctWay = Math.max(0, Math.min(100, Math.round(done / totalDrop * 100)));
+      return { mode: pr.goal, planPw: Math.abs(effectivePace(pr, lastKg) ?? plan), trendPw: Math.round(tr.slope * 700) / 100, pct: pctWay, tooFast: false, isWay: true };
+    }
+  }
   const trendPw = Math.round(tr.slope * 700) / 100;
   const aligned = (pr.goal === 'lose' && trendPw <= 0) || (pr.goal === 'gain' && trendPw >= 0);
   const pct = aligned ? Math.abs(trendPw) / plan : 0;

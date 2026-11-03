@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS, matchTokens } from './lib';
 import { windowsFromEntries } from './banner';
-import { dedupeKey } from './store';
+import { dedupeKey, effectivePace } from './store';
 import { pickFact, markFactClosed } from './facts';
 import { lastSegmentStart } from './achievements';
 
@@ -282,5 +282,24 @@ describe('дедуп каталога (0.7.10)', () => {
   it('разные бренды — разные ключи', () => {
     expect(dedupeKey({ name: 'Молоко', brand: 'Простоквашино' }))
       .not.toBe(dedupeKey({ name: 'Молоко', brand: 'Домик в деревне' }));
+  });
+});
+
+describe('цель в килограммах (0.7.11)', () => {
+  const pr = (over: Partial<import('./db').Profile>) => ({ goal: 'lose', paceKgPerWeek: 0.5, ...over }) as import('./db').Profile;
+  it('по весу 96→85 за 12 недель: темп 0,92 кг/нед', () => {
+    const due = new Date(Date.now() + 12 * 7 * 86400000).toISOString().slice(0, 10);
+    expect(effectivePace(pr({ goalMode: 'weight', goalWeightKg: 85, goalDueDateIso: due }), 96)).toBeCloseTo(0.92, 1);
+  });
+  it('по весу 96→85 за 24 недели: 0,46', () => {
+    const due = new Date(Date.now() + 24 * 7 * 86400000).toISOString().slice(0, 10);
+    expect(effectivePace(pr({ goalMode: 'weight', goalWeightKg: 85, goalDueDateIso: due }), 96)).toBeCloseTo(0.46, 1);
+  });
+  it('классика: темп из paceKgPerWeek', () => {
+    expect(effectivePace(pr({}), 96)).toBe(0.5);
+  });
+  it('цель уже достигнута → темп 0 (норма без дефицита)', () => {
+    const due = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    expect(effectivePace(pr({ goalMode: 'weight', goalWeightKg: 95, goalDueDateIso: due }), 95)).toBe(0);
   });
 });
