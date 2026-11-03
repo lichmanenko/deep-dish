@@ -57,6 +57,38 @@ export type CatalogItem =
   | { kind: 'recipe'; id: string; name: string; sub: string; star: boolean; suspicious: boolean; per100: KbjuSnapshot; unit: 'g' | 'pc'; portions?: PortionPreset[]; recipe: Recipe };
 
 /** сохранить типовые порции позиции (карточка «⋯» → редактор порций) */
+/** Дедуп каталога (v0.7.10, В.): один продукт на ключ — EAN при наличии, иначе нормализованные
+ *  имя+бренд. Выживает «богатая» карточка (БЖУ заполнены, есть порции, свежее); дубль уходит в
+ *  tombstone. Записи дневника не переламываются: ссылаются на старый id, тот остаётся в базе. */
+export function dedupeKey(f: { barcode?: string | null; name: string; brand?: string | null }): string {
+  if (f.barcode) return 'ean:' + f.barcode;
+  return (f.brand ? normE(f.brand) + '|' : '') + normE(f.name);
+}
+
+export async function dedupeCatalog(): Promise<number> {
+  const all = await db.foods.filter(f => !f.deletedAt).toArray();
+  const byKey = new Map<string, typeof all>();
+  for (const f of all) {
+    const k = dedupeKey(f);
+    byKey.set(k, [...(byKey.get(k) ?? []), f]);
+  }
+  let removed = 0;
+  const now = Date.now();
+  for (const group of byKey.values()) {
+    if (group.length < 2) continue;
+    const richness = (f: typeof all[number]) =>
+      (f.pPer100g > 0 ? 1 : 0) + (f.fPer100g > 0 ? 1 : 0) + (f.cPer100g > 0 ? 1 : 0)
+      + (f.portions?.length ? 1 : 0) + (f.barcode ? 1 : 0);
+    const winner = [...group].sort((a, b) => richness(b) - richness(a) || b.updatedAt - a.updatedAt)[0];
+    for (const f of group) {
+      if (f.id === winner.id) continue;
+      await db.foods.update(f.id, { deletedAt: now, updatedAt: now });
+      removed++;
+    }
+  }
+  return removed;
+}
+
 /** Разовая чистка каталога от категорий-суррогатов импорта (v0.7.3, В.: суррогатов не существует).
  *  Идемпотентна: после замены не находит. */
 export async function fixLegacyCats(): Promise<void> {

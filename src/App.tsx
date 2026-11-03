@@ -9,7 +9,7 @@ import { TodayScreen } from './screen-today';
 import { AddScreen } from './screen-add';
 import { ProfileScreen } from './screen-profile';
 import { SettingsScreen } from './screen-settings';
-import { fixLegacyCats } from './store';
+import { fixLegacyCats, dedupeCatalog } from './store';
 import { FamilyScreen } from './family';
 import { loadSync } from './sync';
 import type { Slot } from './db';
@@ -43,6 +43,12 @@ export default function App() {
 
   useEffect(() => { track('app_open', { online: navigator.onLine, cold: true }); }, []);
   useEffect(() => { fixLegacyCats(); }, []); // v0.7.3: чистка категорий-суррогатов
+  useEffect(() => { // v0.7.10: дедуп каталога (EAN/имя+бренд), один раз в сутки
+    const k = 'dd-dedupe-day';
+    if (localStorage.getItem(k) === new Date().toDateString()) return;
+    localStorage.setItem(k, new Date().toDateString());
+    dedupeCatalog().then(n => { if (n > 0) track('catalog_dedupe', { removed: n }); }).catch(() => {});
+  }, []);
   useEffect(() => {
     autoSync();
     const h = () => autoSync();

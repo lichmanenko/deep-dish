@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS, matchTokens } from './lib';
 import { windowsFromEntries } from './banner';
+import { dedupeKey } from './store';
 import { pickFact, markFactClosed } from './facts';
 import { lastSegmentStart } from './achievements';
 
@@ -265,5 +266,21 @@ describe('сегмент непрерывности достижений (раз
   it('несколько пауз — берётся последняя', () => {
     const days = ['2026-01-01', d('2026-01-01', 95), d('2026-01-01', 96), d('2026-01-01', 300)];
     expect(lastSegmentStart(days)).toBe(d('2026-01-01', 300));
+  });
+});
+
+
+describe('дедуп каталога (0.7.10)', () => {
+  it('EAN главнее имени', () => {
+    expect(dedupeKey({ barcode: '4600000000000', name: 'Кекс чайный' }))
+      .toBe(dedupeKey({ barcode: '4600000000000', name: 'Совсем другое' }));
+  });
+  it('имя+бренд без EAN — нормализованы', () => {
+    expect(dedupeKey({ name: 'Кекс Чайный', brand: 'Боровинка' }))
+      .toBe(dedupeKey({ name: 'кекс чайный', brand: 'боровинка' }));
+  });
+  it('разные бренды — разные ключи', () => {
+    expect(dedupeKey({ name: 'Молоко', brand: 'Простоквашино' }))
+      .not.toBe(dedupeKey({ name: 'Молоко', brand: 'Домик в деревне' }));
   });
 });

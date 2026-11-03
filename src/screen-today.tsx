@@ -1,14 +1,21 @@
-function MacroChip({ v, goal, k, compact }: { v: number; goal?: number; k: string; compact?: boolean }) {
+function MacroChip({ v, goal, k, compact, onOverTap }: { v: number; goal?: number; k: string; compact?: boolean; onOverTap?: () => void }) {
   const over = goal !== undefined && v > goal;
-  return (
-    <div className="dd-card flex-1 text-center py-2.5">
+  const body = (
+    <>
       <div className="text-[0.9375rem] font-bold dd-num flex items-center justify-center gap-1" style={over ? { color: 'var(--warn)' } : undefined}>
         {compact && <span>{k[0].toUpperCase()}</span>}
         {fmt(v)} г{over && <span className="text-[0.6875rem]">▲</span>}
       </div>
       {!compact && <div className="text-[0.6875rem] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>}
-    </div>
+    </>
   );
+  // v0.7.10 (В.): чип с перебором открывает топ-виновников этого макро; без перебора тап не нужен
+  if (over && onOverTap) {
+    return (
+      <button className="dd-card flex-1 text-center py-2.5" style={{ border: 'none', fontFamily: 'inherit' }} onClick={onOverTap}>{body}</button>
+    );
+  }
+  return <div className="dd-card flex-1 text-center py-2.5">{body}</div>;
 }
 
 // Экран «Сегодня»: кольцо нормы, чипы БЖУ, слоты с записями, навигация по датам
@@ -47,6 +54,8 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
   const [confirmDel, setConfirmDel] = useState<Entry | null>(null);
   const [explain, setExplain] = useState<null | { title: string; text: string }>(null);
   const [goalInfo, setGoalInfo] = useState(false);
+  const [dayInfo, setDayInfo] = useState(false);
+  const [overMacro, setOverMacro] = useState<null | 'p' | 'f' | 'c'>(null);
   // факты и достижения (v0.7.6)
   const [fact, setFact] = useState<{ f: Fact; at: number } | null>(null);
   const [achToast, setAchToast] = useState<AchDef | null>(null);
@@ -148,7 +157,8 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
               </button>
             </div>
             <div className="text-center px-1">
-              <div className="text-xl font-bold dd-num">{fmt(totals.kcal)}</div>
+              <button className="text-xl font-bold dd-num" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                onClick={() => setDayInfo(true)} aria-label="Баланс дня">{fmt(totals.kcal)}</button>
               {!compact
                 ? <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>из {fmt(target)} · {percent}%</div>
                 : <div className="text-xs mt-1 dd-num" style={{ color: 'var(--mut)' }}>{percent}%</div>}
@@ -170,9 +180,9 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
         </div>
 
         <div className="flex gap-2 mb-3">
-          <MacroChip v={totals.p} goal={norma?.p} k="белки" compact={compact} />
-          <MacroChip v={totals.f} goal={norma?.f} k="жиры" compact={compact} />
-          <MacroChip v={totals.c} goal={norma?.c} k="углев." compact={compact} />
+          <MacroChip v={totals.p} goal={norma?.p} k="белки" compact={compact} onOverTap={() => setOverMacro('p')} />
+          <MacroChip v={totals.f} goal={norma?.f} k="жиры" compact={compact} onOverTap={() => setOverMacro('f')} />
+          <MacroChip v={totals.c} goal={norma?.c} k="углев." compact={compact} onOverTap={() => setOverMacro('c')} />
         </div>
 
         <button className="dd-action strong" onClick={() => onAdd(null)}>＋ еда</button>
@@ -205,6 +215,12 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
       )}
 
       <Calendar open={calOpen} date={date} onClose={() => setCalOpen(false)} onPick={d => { setDate(d); setCalOpen(false); }} filled={filledDays} />
+
+      <OverMacroSheet macro={overMacro} onClose={() => setOverMacro(null)} entries={entries}
+        slots={slots ?? []} totals={totals} />
+
+      <DayInfoSheet open={dayInfo} onClose={() => setDayInfo(false)} date={date} entries={entries}
+        macroPct={profile?.macroPct} slots={slots ?? []} />
 
       <EntryEditModal entry={editEntry} onClose={() => setEditEntry(null)} />
       <Modal open={!!explain} onClose={() => setExplain(null)}>
@@ -626,6 +642,118 @@ function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () =
           track('entry_edited'); onClose();
         }}>Сохранить</button>
       </div>
+    </Sheet>
+  );
+}
+
+/** Шит баланса дня (v0.7.10, В.): те же вердикты и точки-виновники, что у приёма,
+ *  но по всему дню; без сохранения приёма. Тап по калоражу между кольцами. */
+function DayInfoSheet({ open, onClose, date, entries, macroPct, slots }: {
+  open: boolean; onClose: () => void; date: string; entries: Entry[];
+  macroPct?: { p: number; f: number; c: number }; slots: Slot[];
+}) {
+  useEffect(() => { if (open) track('day_balance_open', { date }); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!open) return null;
+  const t = entries.reduce((s, e) => ({ kcal: s.kcal + e.snapshot.kcal, p: s.p + e.snapshot.p, f: s.f + e.snapshot.f, c: s.c + e.snapshot.c }), { kcal: 0, p: 0, f: 0, c: 0 });
+  const kc = { p: t.p * 4, f: t.f * 9, c: t.c * 4 };
+  const sum = Math.max(1, kc.p + kc.f + kc.c);
+  const pct = profile0(macroPct);
+  const share = { p: kc.p / sum, f: kc.f / sum, c: kc.c / sum };
+  const verdicts: string[] = [];
+  if (t.kcal === 0) verdicts.push('день без записей');
+  else {
+    (['p', 'f', 'c'] as const).forEach(m => {
+      const names = { p: 'белки', f: 'жиры', c: 'углеводы' };
+      if (Math.abs(share[m] - pct[m] / 100) > 0.12) {
+        verdicts.push(`${names[m]} ${share[m] > pct[m] / 100 ? 'больше' : 'меньше'} плана (${Math.round(share[m] * 100)}% против ${pct[m]}%)`);
+      }
+    });
+    if (!verdicts.length) verdicts.push('по белкам-жирам-углеводам — как по плану');
+  }
+  // точки-виновники по всем записям дня (та же логика, что у приёма)
+  const dotsByEntry = new Map<string, Array<'p' | 'f' | 'c'>>();
+  const labels: Record<'p' | 'f' | 'c', string> = { p: 'белки', f: 'жиры', c: 'углеводы' };
+  const used: Array<'p' | 'f' | 'c'> = [];
+  if (t.kcal > 0) {
+    (['p', 'f', 'c'] as const).forEach(m => {
+      if (share[m] - pct[m] / 100 > 0.12 && t[m] > 0) {
+        used.push(m);
+        [...entries].sort((a, b) => b.snapshot[m] - a.snapshot[m]).slice(0, 3)
+          .filter(e => e.snapshot[m] / t[m] >= 0.2)
+          .forEach(e => dotsByEntry.set(e.id, [...(dotsByEntry.get(e.id) ?? []), m]));
+      }
+    });
+  }
+  const slotName = (id: string) => slots.find(s => s.id === id)?.name ?? '';
+  return (
+    <Sheet open={open} onClose={onClose} title="Баланс дня"
+      note={`${entries.length} записей · ${fmt(t.kcal)} ккал · Б ${fmt(t.p)} · Ж ${fmt(t.f)} · У ${fmt(t.c)}`}>
+      <div className="dd-card p-3 mb-3" style={{ background: 'var(--veil)', boxShadow: 'none' }}>
+        <div className="dd-field-label" style={{ marginTop: 0 }}>Баланс</div>
+        <div className="text-[0.78125rem]" style={{ color: 'var(--mut)' }}>{verdicts.join('; ')}.</div>
+        {used.length > 0 && (
+          <div className="text-[0.6875rem] mt-1.5" style={{ color: 'var(--tx)' }}>
+            основной вклад:{' '} {used.map(m => (<span key={m}><span style={{ color: MACRO_COLOR[m] }}>●</span>{' '}{labels[m]} </span>))}— точки у блюд ниже
+          </div>
+        )}
+      </div>
+      {entries.slice().sort((a, b) => (a.timeEaten || '').localeCompare(b.timeEaten || '')).map(e => (
+        <div key={e.id} className="flex justify-between items-baseline gap-2 text-[0.8125rem] py-1" style={{ borderBottom: '1px solid var(--tr)' }}>
+          <span className="flex-1 min-w-0 truncate">
+            {!!dotsByEntry.get(e.id)?.length && (
+              <span className="mr-1" aria-label="виновник перекоса">{dotsByEntry.get(e.id)!.map(m => <span key={m} style={{ color: MACRO_COLOR[m] }}>●</span>)}&nbsp;</span>
+            )}
+            {slotName(e.slotId) && <span style={{ color: 'var(--mut)', fontSize: '0.6875rem' }}>{slotName(e.slotId).slice(0, 6)} · </span>}
+            <DayEntryName e={e} />
+          </span>
+          <span className="dd-num flex-none text-[0.875rem]" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
+        </div>
+      ))}
+    </Sheet>
+  );
+}
+
+/** имя продукта записи для шита дня (асинхронная догрузка) */
+function DayEntryName({ e }: { e: Entry }) {
+  const [name, setName] = useState('');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const f = e.kind === 'food' ? await db.foods.get(e.refId) : await db.recipes.get(e.refId);
+      if (alive) setName(f?.name ?? '—');
+    })();
+    return () => { alive = false; };
+  }, [e]);
+  return <>{name}</>;
+}
+
+/** Топ-виновников одного макро за день (v0.7.10, В.): тап по чипу Б/Ж/У с ▲ */
+function OverMacroSheet({ macro, onClose, entries, slots, totals }: {
+  macro: null | 'p' | 'f' | 'c'; onClose: () => void; entries: Entry[]; slots: Slot[];
+  totals: { kcal: number; p: number; f: number; c: number };
+}) {
+  useEffect(() => { if (macro) track('chip_over_open', { macro }); }, [macro]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!macro) return null;
+  const names = { p: 'белки', f: 'жиры', c: 'углеводы' } as const;
+  const units = { p: 'г', f: 'г', c: 'г' } as const;
+  const total = totals[macro];
+  const slotName = (id: string) => slots.find(s => s.id === id)?.name ?? '';
+  const top = [...entries].sort((a, b) => b.snapshot[macro] - a.snapshot[macro]).slice(0, 3)
+    .filter(e => e.snapshot[macro] / Math.max(total, 0.01) >= 0.15);
+  return (
+    <Sheet open={!!macro} onClose={onClose} title={`Перебор: ${names[macro]}`}
+      note={`всего ${fmt(total)} ${units[macro]} — кто внёс основной вклад`}>
+      {top.length === 0 && <div className="text-sm text-center py-4" style={{ color: 'var(--mut)' }}>записей с этим макро сегодня нет</div>}
+      {top.map((e, i) => (
+        <div key={e.id} className="flex justify-between items-baseline gap-2 text-[0.84375rem] py-1.5" style={{ borderBottom: '1px solid var(--tr)' }}>
+          <span className="flex-1 min-w-0 truncate">
+            <span className="dd-num" style={{ color: 'var(--mut)' }}>{i + 1}. </span>
+            {slotName(e.slotId) && <span style={{ color: 'var(--mut)', fontSize: '0.6875rem' }}>{slotName(e.slotId)} · </span>}
+            <DayEntryName e={e} />
+          </span>
+          <span className="dd-num flex-none" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot[macro])} {units[macro]}</span>
+        </div>
+      ))}
     </Sheet>
   );
 }
