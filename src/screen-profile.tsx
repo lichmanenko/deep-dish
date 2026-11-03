@@ -296,7 +296,7 @@ export function ProfileScreen() {
 
       {dirty && (
         <div className="dd-save-bar">
-          <button className="dd-action strong" onClick={save}>Сохранить изменения</button>
+          <button className="dd-action strong" style={{ fontSize: '1rem' }} onClick={save}>✓ Сохранить изменения</button>
         </div>
       )}
       <button className="dd-action strong" disabled={!dirty} onClick={save} style={{ visibility: dirty ? 'hidden' : 'visible' }}>{saved ? '✓ Сохранено' : 'Сохранить'}</button>
@@ -340,7 +340,7 @@ function WeightCard({ weights }: { weights: WeightPoint[] | undefined }) {
       <div className="flex justify-between items-baseline">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Динамика веса</div>
         <div className="dd-num font-bold" style={{ fontSize: '0.8125rem', color: delta > 0 ? 'var(--warn)' : 'var(--ok)' }}>
-          {delta > 0 ? '+' : ''}{delta} кг за 6 мес
+          {delta > 0 ? '+' : ''}{fmtLocal(delta)} кг за 6 мес
         </div>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 84 }}>

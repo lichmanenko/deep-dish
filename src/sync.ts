@@ -167,5 +167,7 @@ export function syncStatusText(): string {
   if (!st.lastOk) return `${st.nickname} (${st.role}) · синхронизации ещё не было`;
   const d = new Date(st.lastOk);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${st.nickname} (${st.role}) · последний синк ${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  const today = new Date().toDateString() === d.toDateString();
+  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  return today ? `${st.nickname} · обновлено сегодня в ${hm}` : `${st.nickname} · обновлено ${p(d.getDate())}.${p(d.getMonth() + 1)} в ${hm}`;
 }

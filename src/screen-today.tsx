@@ -6,7 +6,7 @@ function MacroChip({ v, goal, k, compact, onOverTap }: { v: number; goal?: numbe
         {compact && <span>{k[0].toUpperCase()}</span>}
         {fmt(v)} г{over && <span className="text-[0.6875rem]">▲</span>}
       </div>
-      {!compact && <div className="text-[0.6875rem] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · ${fmt(goal)}` : ''}</div>}
+      {!compact && <div className="text-[0.6875rem] mt-0.5" style={{ color: 'var(--mut)' }}>{k}{goal !== undefined ? ` · цель ${fmt(goal)}` : ''}</div>}
     </>
   );
   // v0.7.10 (В.): чип с перебором открывает топ-виновников этого макро; без перебора тап не нужен
@@ -146,7 +146,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                 {ringMode === 'kcal' ? (
                   <Ring percent={percent}>
                     <div className="text-lg font-extrabold dd-num">{fmt(rest)}</div>
-                    {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось</div>}
+                    {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось, ккал</div>}
                   </Ring>
                 ) : (
                   <MacroRing p={totals.p * 4} f={totals.f * 9} c={totals.c * 4} cap={target}>
@@ -160,7 +160,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
               <button className="text-xl font-bold dd-num" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                 onClick={() => setDayInfo(true)} aria-label="Баланс дня">{fmt(totals.kcal)}</button>
               {!compact
-                ? <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>из {fmt(target)} · {percent}%</div>
+                ? <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>съедено из {fmt(target)} ккал</div>
                 : <div className="text-xs mt-1 dd-num" style={{ color: 'var(--mut)' }}>{percent}%</div>}
               {percent > 100 && <div className="text-xs mt-1" style={{ color: 'var(--warn)' }}>↑ перебор на {fmt(totals.kcal - target)}</div>}
             </div>
@@ -425,7 +425,7 @@ function SlotCard({ slot, entries, marks, date, showTime, onAdd, onOpenInfo, onE
         <div className="text-xs dd-num flex items-center gap-1" style={{ color: 'var(--mut)' }}>
           {hasEntries
             ? <span className="dd-num font-bold" style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
-            : (marks.some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : 'ничего')}
+            : (marks.some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : '')}
         </div>
       </div>
       )}
@@ -521,7 +521,7 @@ function GoalRing({ goal, compact, onTap }: { goal: GoalProgress; compact?: bool
       </svg>
       <div className="dd-ring-val">
         <div className="text-lg font-extrabold dd-num">{label}</div>
-        {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>{goal.isForecast ? 'прогноз' : goal.isWay ? 'пути' : 'план'}</div>}
+        {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>{goal.isForecast ? 'прогноз, %' : goal.isWay ? 'пути, %' : 'план, %'}</div>}
       </div>
     </button>
   );

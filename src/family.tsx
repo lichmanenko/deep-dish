@@ -78,7 +78,10 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
           <>
             <div className="py-3">
               <div className="text-sm">{syncStatusText()}</div>
-              <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)', wordBreak: 'break-all' }}>{sync.server}</div>
+              <details style={{ marginTop: 4 }}>
+                <summary className="text-[0.6875rem]" style={{ color: 'var(--mut)', cursor: 'pointer' }}>для техники</summary>
+                <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)', wordBreak: 'break-all' }}>{sync.server}</div>
+              </details>
             </div>
             <div className="pb-3">
               <div className="flex justify-between items-center" style={{ minHeight: 44, borderTop: '1px solid var(--tr)' }}>
@@ -92,7 +95,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                 {busy ? 'Синхронизирую…' : 'Синхронизировать'}
               </button>
               <button className="dd-action" style={{ width: '100%', marginTop: 8, color: 'var(--warn)' }}
-                onClick={() => { saveSync(null); setSync(null); setMsg('Устройство отключено от синхронизации (данные на месте).'); }}>Отключить устройство</button>
+                onClick={() => { saveSync(null); setSync(null); setMsg('Это устройство отключено от семейного обмена. Все записи на месте.'); }}>Отключить это устройство</button>
               {isAdmin && (
                 <button className="dd-action" style={{ width: '100%', marginTop: 8 }}
                   onClick={() => {
@@ -100,7 +103,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                       .then(() => setMsg('Токен скопирован — передай его новому пользователю для подключения.'))
                       .catch(() => setMsg('Токен: ' + sync.token));
                     track('admin_token_copy');
-                  }}>Скопировать новый токен</button>
+                  }}>Пригласить нового участника</button>
               )}
             </div>
             <div className="py-3" style={{ borderTop: '1px solid var(--tr)' }}>
@@ -197,7 +200,7 @@ function MetricsCard() {
   if (busy) return <div className="dd-card p-4 mt-4 text-center text-sm" style={{ color: 'var(--mut)' }}>Собираю метрики…</div>;
   if (err) return (
     <div className="dd-card p-4 mt-4 text-center text-sm" style={{ color: 'var(--mut)' }}>
-      Сейчас витрина недоступна — она живёт на семейном сервере, вернись в домашнюю сеть.
+      Витрина откроется дома — при подключении к домашнему Wi-Fi.
       <button className="dd-link-btn" style={{ display: 'block', margin: '6px auto 0' }} onClick={load}>повторить</button>
     </div>
   );

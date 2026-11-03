@@ -40,6 +40,8 @@ body {
   background: var(--glass);
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
 }
+/* аудит Б7: в тёмной теме карточки отделяются hairline — зазора 8px мало при близких тонах */
+.dark .dd-card { border: 1px solid rgba(255, 255, 255, 0.055); }
 .dd-num { font-variant-numeric: tabular-nums; }
 
 /* ── Кольцо ── */
@@ -85,7 +87,7 @@ body {
 /* канон: кнопки сегментной группы делят ширину контейнера поровну (DESIGN.md §Контролы) */
 .dd-seg > button { flex: 1 1 0; }
 .dd-seg button {
-  font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 8px 13px; border-radius: 14px;
+  font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 11px 13px; border-radius: 14px;
   border: none; background: var(--veil); color: var(--mut); cursor: pointer;
 }
 .dd-seg button.on { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; }
@@ -129,6 +131,7 @@ body {
 }
 .dd-item .nm { font-size: 0.90625rem; font-weight: 550; }
 .dd-item .sub { font-size: 0.71875rem; color: var(--mut); margin-top: 2px; }
+.dd-item .kc { font-weight: 550; } /* А7: колонка БЖУ — весом повыше */
 .dark .dd-item .sub, .dark .dd-item .kc { color: color-mix(in srgb, var(--mut) 68%, #fff); } /* аудит А1: вторичный текст тьмы выше порога */
 .dd-item .kc { font-size: 0.78125rem; color: var(--mut); white-space: nowrap; }
 .dd-item .dd-more {
