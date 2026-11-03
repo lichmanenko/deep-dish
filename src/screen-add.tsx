@@ -144,9 +144,10 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
             )}
             <Section title="⌕ Найдено" id="srch-found" defaultOpen>
               {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
-                <p className="text-sm mt-3 mb-0 text-center" style={{ color: 'var(--mut)' }}>
-                  Ничего не нашлось.
-                </p>
+                <div className="text-center" style={{ marginTop: '28vh' }}>
+                  <div style={{ fontSize: '2rem' }}>🔍</div>
+                  <p className="text-[0.9375rem] mt-2 mb-0" style={{ color: 'var(--tx)' }}>Ничего не нашлось</p>
+                </div>
               )}
               {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
                 <div className="flex gap-2 mb-4 mt-3">
@@ -629,7 +630,7 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
       <div className="dd-input-row">
         <input className="dd-input dd-num" type="text" inputMode="numeric" placeholder="напр. 4680036912345"
           value={ean} onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 13); setEan(v); setOffState(null); }} />
-        <button className="dd-action" style={{ flex: 'none', width: 92 }} disabled={!/^\d{12,13}$/.test(ean) || offState === 'loading'} onClick={lookup}>
+        <button className="dd-action strong" style={{ flex: 'none', width: 92 }} disabled={!/^\d{12,13}$/.test(ean) || offState === 'loading'} onClick={lookup}>
           {offState === 'loading' ? '…' : 'найти'}
         </button>
       </div>
@@ -656,7 +657,7 @@ function CreateFood({ open, initialName, initialEan, onClose }: { open: boolean;
         <NumCell label="У" v={c} set={setC} warn={submitted && c.trim() === ''} />
         <NumCell label="ккал" v={kcal} set={s => { setKcalTouched(true); setKcal(s); }} />
       </div>
-      {!kcalTouched && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>калории рассчитаны из БЖУ — введёшь свои, появится пометка ⚠️ если не сойдётся</div>}
+      {!kcalTouched && <div className="text-[0.75rem] mt-1.5" style={{ color: 'var(--acc-fg)' }}>🧮 калории рассчитаются из БЖУ сами — введёшь свои, проверим на опечатку (⚠️)</div>}
 
       <div className="dd-field-label">Категория{!catTouched && guessCategory(name) ? ' — подобрана по названию' : ''}</div>
       <select className="dd-input dd-select" value={cat} onChange={e => { setCatTouched(true); setCat(e.target.value); }}>
