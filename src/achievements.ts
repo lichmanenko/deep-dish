@@ -56,7 +56,7 @@ export async function detectAchievements(): Promise<string[]> {
     db.weightLogs.where('userId').equals(LOCAL_USER).filter(w => !w.deletedAt).toArray(),
     db.achievements.toArray(),
   ]);
-  const have = new Set(mine.map(a => a.code));
+  const have = new Set(mine.filter(a => !a.deletedAt).map(a => a.code)); // tombstone не блокирует перевыдачу (В., 03.11: пропавшая first_entry)
   const unlocked: string[] = [];
 
   // ── эпоха живого дневника (В., 25.10, разбирательство №2): достижения считаем только по
@@ -126,16 +126,25 @@ export async function detectAchievements(): Promise<string[]> {
   }
   // счётчики
   if (segEntries.length >= 1 && !have.has('first_entry')) unlocked.push('first_entry');
+  // ретро-ачивки по событиям: скан/рецепт случились до появления ачивок — honour фактам (В., 03.11)
+  if (!have.has('scan1') && await db.events.where('name').equals('scan_hit').first()) unlocked.push('scan1');
+  if (!have.has('recipe1') && await db.events.where('name').equals('recipe_created').first()) unlocked.push('recipe1');
   if (segEntries.length >= 100 && !have.has('count100')) unlocked.push('count100');
   if (segEntries.length >= 1000 && !have.has('count1000')) unlocked.push('count1000');
   // неделя «в момент еды»: 7 последних дней, каждый с записями, без вечерней пачки
   // (записи дня созданы в течение дня: createdAt не позже 21:00 и разбросаны)
   const last7 = Array.from({ length: 7 }, (_, i) => todayISOOffset(today, -i));
   if (last7.every(d => daySet.has(d)) && !have.has('moment_week')) {
-    const okWeek = last7.every(d => segEntries.filter(e => e.date === d).every(e => {
-      const t = e.timeEaten || '';
-      return !!t && t < '21:00'; // упрощённый критерий v1 (см. FACTS.md)
-    }));
+    // «в момент еды» = нет вечерней пачки: ≥4 записей, введённых одним часом после 21:00
+    // (поздний перекус 1-2 записями — не пачка; В., 03.11: старый критерий бранил позднюю еду, а не ввод)
+    const okWeek = last7.every(d => {
+      const byHour: Record<string, number> = {};
+      for (const e of segEntries.filter(x => x.date === d)) {
+        const h = (e.timeEaten || '').slice(0, 2);
+        if (h >= '21') byHour[h] = (byHour[h] ?? 0) + 1;
+      }
+      return Object.values(byHour).every(n => n < 4);
+    });
     if (okWeek) unlocked.push('moment_week');
   }
   // неделя взвешиваний

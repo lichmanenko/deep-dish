@@ -61,6 +61,7 @@ export type CatalogItem =
  *  Идемпотентна: после замены не находит. */
 export async function fixLegacyCats(): Promise<void> {
   const bad = await db.foods.filter(f => !f.deletedAt && HIDDEN_CATS.includes(f.category)).toArray();
+  await fixLegacyCats(); // v0.7.9.3: «Свои продукты» тоже уходит в подбор/«Прочее»
   for (const f of bad) {
     const cat = guessCategory(f.name) ?? 'Прочее';
     await db.foods.update(f.id, { category: cat, updatedAt: Date.now() });

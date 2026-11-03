@@ -587,7 +587,15 @@ function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () =
   const [grams, setGrams] = useState('');
   const [time, setTime] = useState('');
   React.useEffect(() => {
-    if (entry) { setGrams(String(Math.round(entry.grams))); setTime(entry.timeEaten); }
+    (async () => {
+    if (entry) {
+      // порционные записи хранят шт×100: в поле — штуки (В., 03.11: при правке показывались граммы)
+      const f = await (entry.kind === 'food' ? db.foods.get(entry.refId) : db.recipes.get(entry.refId));
+      const isPcEdit = f?.unit === 'pc';
+      setGrams(String(isPcEdit ? Math.round((entry.grams / 100) * 100) / 100 : Math.round(entry.grams)));
+      setTime(entry.timeEaten);
+    }
+    })();
   }, [entry]);
   if (!entry) return null;
   const g = parseFloat(grams.replace(',', '.')) || 0;
