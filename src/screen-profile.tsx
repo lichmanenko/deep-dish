@@ -33,6 +33,7 @@ export function ProfileScreen() {
   const [flags, setFlags] = useState<FlagSettings>(() => loadFlags());
   const [flagsOpen, setFlagsOpen] = useState(false);
   const [achOpen, setAchOpen] = useState(false);
+  const [goalWeightInput, setGoalWeightInput] = useState(pr?.goalWeightKg != null ? String(pr.goalWeightKg) : '');
   const [factsOn, setFactsOn] = useState(() => loadSettings().factsOn ?? true);
   const toggleFacts = (v: boolean) => {
     setFactsOn(v);
@@ -49,7 +50,7 @@ export function ProfileScreen() {
   const [whyOpen, setWhyOpen] = useState(false);
   useEffect(() => { ensureDayNorma(todayISO()).then(setDayNorma); }, [saved]);
 
-  useEffect(() => { getProfile().then(p => { setPr(p ?? DEFAULT); setBaseline(JSON.stringify(p ?? DEFAULT)); }); }, []);
+  useEffect(() => { getProfile().then(p => { setPr(p ?? DEFAULT); setBaseline(JSON.stringify(p ?? DEFAULT)); setGoalWeightInput(p?.goalWeightKg != null ? String(p.goalWeightKg) : ''); }); }, []);
   if (!pr) return <div className="min-h-screen" />;
 
   const norma = calcNorma(pr); // живой расчёт от черновика: норма меняется сразу при правке целей
@@ -57,8 +58,20 @@ export function ProfileScreen() {
   const dirty = JSON.stringify({ ...pr, updatedAt: 0 }) !== JSON.stringify({ ...JSON.parse(baseline || '{}'), updatedAt: 0 });
   const set = (patch: Partial<Profile>) => { setPr({ ...pr, ...patch }); setSaved(false); };
 
+  // v0.7.11: темп из целевого веса и даты — подсказка в карточке
+  const paceFromWeight = (() => {
+    const w = parseFloat(goalWeightInput.replace(',', '.'));
+    const curW = pr.weightKg ?? weights.length ? weights[weights.length - 1]?.kg : undefined;
+    if (!pr || pr.goalMode !== 'weight' || !pr.goalDueDateIso || !w || !curW) return null;
+    if (pr.goal === 'lose' && w >= curW) return null;
+    if (pr.goal === 'gain' && w <= curW) return null;
+    const weeks = Math.max(1, (new Date(pr.goalDueDateIso + 'T00:00:00').getTime() - Date.now()) / (7 * 86400000));
+    return Math.round((Math.abs(curW - w) / weeks) * 100) / 100;
+  })();
+
   async function save() {
-    await saveProfile(pr!);
+    const gw = parseFloat(goalWeightInput.replace(',', '.'));
+    await saveProfile({ ...pr!, goalWeightKg: Number.isFinite(gw) ? gw : undefined });
     setBaseline(JSON.stringify(pr!));
     setSaved(true);
     // v0.5.0: день ещё не закончился — сегодняшний снапшот нормы перезаписываем (прошлые не трогаем)
@@ -154,17 +167,50 @@ export function ProfileScreen() {
           <div className="text-[0.75rem] mt-2 text-center" style={{ color: 'var(--mut)' }}>норма подбирается так, чтобы вес сохранялся: {fmt(liveNorma?.kcal ?? 0)} ккал</div>
         ) : pr.goal !== 'none' && (
           <>
-            <div className="dd-field-label">Темп, кг в неделю</div>
+            <div className="dd-field-label">Режим цели</div>
             <div className="dd-seg" style={{ display: 'flex' }}>
-              {[0.25, 0.5, 0.75, 1, 1.25].map(v => (
-                <button key={v} style={{ flex: 1 }} className={cx(pr.paceKgPerWeek === v && 'on')}
-                  onClick={() => set({ paceKgPerWeek: v })}>{String(v).replace('.', ',')}</button>
-              ))}
+              <button style={{ flex: 1 }} className={cx((pr.goalMode ?? 'pace') === 'pace' && 'on')} onClick={() => set({ goalMode: 'pace' })}>по темпу</button>
+              <button style={{ flex: 1 }} className={cx(pr.goalMode === 'weight' && 'on')} onClick={() => set({ goalMode: 'weight' })}>по весу</button>
             </div>
-            <div className="text-[0.75rem] mt-2 text-center" style={{ color: 'var(--acc-fg)' }}>
-              план: −{String(pr.paceKgPerWeek ?? 0.5).replace('.', ',')} кг/нед · норма {fmt(liveNorma?.kcal ?? norma?.kcal ?? 0)} ккал
-              {liveNorma && liveNorma.kcal <= Math.round(liveNorma.bmr * 1.1) && ' (пол безопасности — не ниже 1,1× обмена)'}
-            </div>
+            {pr.goalMode === 'weight' ? (
+              <>
+                <div className="dd-input-row mt-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="dd-field-label" style={{ marginTop: 0 }}>Целевой вес, кг</div>
+                    <input className="dd-input dd-num" type="text" inputMode="decimal" value={goalWeightInput}
+                      onChange={e => setGoalWeightInput(e.target.value)} placeholder="напр. 85" />
+                  </div>
+                  <div className="min-w-0" style={{ width: 130 }}>
+                    <div className="dd-field-label" style={{ marginTop: 0 }}>Дата</div>
+                    <input className="dd-input dd-num" type="date" value={pr.goalDueDateIso ?? ''} style={{ padding: '9px 10px' }}
+                      onChange={e => set({ goalDueDateIso: e.target.value || undefined })} />
+                  </div>
+                </div>
+                {paceFromWeight !== null && (
+                  <div className="text-[0.75rem] mt-2 text-center" style={{ color: 'var(--acc-fg)' }}>
+                    темп {paceFromWeight >= 10 ? '—' : String(paceFromWeight).replace('.', ',')} кг/нед · норма {fmt(liveNorma?.kcal ?? norma?.kcal ?? 0)} ккал
+                    {liveNorma && liveNorma.kcal <= Math.round(liveNorma.bmr * 1.1) && ' — упёрлись в пол безопасности: сдвинь дату дальше'}
+                  </div>
+                )}
+                {paceFromWeight === null && (
+                  <div className="text-[0.75rem] mt-2 text-center" style={{ color: 'var(--mut)' }}>укажи целевой вес и дату — темп посчитается сам</div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="dd-field-label">Темп, кг в неделю</div>
+                <div className="dd-seg" style={{ display: 'flex' }}>
+                  {[0.25, 0.5, 0.75, 1, 1.25].map(v => (
+                    <button key={v} style={{ flex: 1 }} className={cx(pr.paceKgPerWeek === v && 'on')}
+                      onClick={() => set({ paceKgPerWeek: v })}>{String(v).replace('.', ',')}</button>
+                  ))}
+                </div>
+                <div className="text-[0.75rem] mt-2 text-center" style={{ color: 'var(--acc-fg)' }}>
+                  план: −{String(pr.paceKgPerWeek ?? 0.5).replace('.', ',')} кг/нед · норма {fmt(liveNorma?.kcal ?? norma?.kcal ?? 0)} ккал
+                  {liveNorma && liveNorma.kcal <= Math.round(liveNorma.bmr * 1.1) && ' (пол безопасности — не ниже 1,1× обмена)'}
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
