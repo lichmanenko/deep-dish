@@ -144,7 +144,7 @@ export const CATEGORY_KEYWORDS = categoryKeywords as Array<{ cat: string; words:
 
 // служебные категории-суррогаты импорта: для пользователя их не существует (В., 24.10) —
 // импортируемое категоризуется словарём по названию; не угадалось — «Прочее»
-export const HIDDEN_CATS = ['Импорт OFF', 'Импорт MFP'];
+export const HIDDEN_CATS = ['Импорт OFF', 'Импорт MFP', 'Свои продукты']; // «Свои продукты» — атавизм v0.7.8, В. 03.11
 
 export function guessCategory(name: string): string | null {
   const n = normE(name);
