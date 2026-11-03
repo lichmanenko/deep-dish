@@ -129,9 +129,10 @@ body {
 }
 .dd-item .nm { font-size: 0.90625rem; font-weight: 550; }
 .dd-item .sub { font-size: 0.71875rem; color: var(--mut); margin-top: 2px; }
+.dark .dd-item .sub, .dark .dd-item .kc { color: color-mix(in srgb, var(--mut) 68%, #fff); } /* аудит А1: вторичный текст тьмы выше порога */
 .dd-item .kc { font-size: 0.78125rem; color: var(--mut); white-space: nowrap; }
 .dd-item .dd-more {
-  flex: none; width: 30px; height: 34px; border-radius: 11px; border: none;
+  flex: none; width: 44px; height: 44px; margin: -5px -6px -5px 0; border-radius: 13px; border: none;
   background: transparent; color: var(--mut); font-size: 1.0625rem; font-weight: 700; cursor: pointer;
 }
 .dd-item .plus {
@@ -337,7 +338,7 @@ input[type=time].dd-input { padding: 0 8px; }
 }
 .dd-link-btn { background: none; border: none; color: var(--acc-fg); font: inherit; font-size: 0.84375rem; font-weight: 600; cursor: pointer; padding: 8px 10px; }
 .dd-warnmark { color: var(--warn); font-size: 0.75rem; }
-.dd-star { font-size: 0.8125rem; }
+.dd-star { font-size: 0.8125rem; width: 44px; height: 44px; margin: -8px -4px; background: none; border: none; cursor: pointer; }
 .dd-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .dd-cal-cell {
   padding: 9px 0; border-radius: 14px; border: none; background: var(--tr); color: var(--tx);
