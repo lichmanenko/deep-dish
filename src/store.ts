@@ -79,7 +79,9 @@ export async function dedupeCatalog(): Promise<number> {
     const richness = (f: typeof all[number]) =>
       (f.pPer100g > 0 ? 1 : 0) + (f.fPer100g > 0 ? 1 : 0) + (f.cPer100g > 0 ? 1 : 0)
       + (f.portions?.length ? 1 : 0) + (f.barcode ? 1 : 0);
-    const winner = [...group].sort((a, b) => richness(b) - richness(a) || b.updatedAt - a.updatedAt)[0];
+    // В., 08.11 (Havarti): при равенстве богатства побеждает карточка без ⚠️ — kcal сходится с БЖУ
+    const clean = (f: typeof all[number]) => kbjuSuspicious(f.kcalPer100g, f.pPer100g, f.fPer100g, f.cPer100g, f.name) ? 0 : 1;
+    const winner = [...group].sort((a, b) => richness(b) - richness(a) || clean(b) - clean(a) || b.updatedAt - a.updatedAt)[0];
     for (const f of group) {
       if (f.id === winner.id) continue;
       await db.foods.update(f.id, { deletedAt: now, updatedAt: now });

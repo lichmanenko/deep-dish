@@ -7,7 +7,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 const ScannerLayer = lazy(() => import('./scanner-layer').then(m => ({ default: m.ScannerLayer })));
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
-import { getCatalog, getRecent, toggleStar, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
+import { getCatalog, getRecent, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
 import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS, matchTokens, todayISO } from './lib';
 import { Sheet, Modal, Confirm, Collapse, TopSheet, SwipeRow, cx, BarcodeIcon as Icons_Barcode } from './ui';
 import { searchOff, saveOffHit, type OffHit } from './off';
@@ -44,6 +44,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
 
   const catalog = useLiveQuery(() => getCatalog(q), [q], [] as CatalogItem[]);
   const recentKeys = useLiveQuery(() => getRecent(10), [], [] as Array<{ kind: 'food' | 'recipe'; refId: string }>);
+  const recentSet = useMemo(() => new Set((recentKeys ?? []).map(k => `${k.kind}:${k.refId}`)), [recentKeys]);
   const meals = useLiveQuery(() => db.savedMeals.filter(m => !m.deletedAt).toArray(), [], [] as SavedMeal[]);
   const allSlots = useLiveQuery(() => db.slots.filter((s: Slot) => !s.deletedAt).sortBy('sortOrder'), [], [] as Slot[]);
 
@@ -109,12 +110,9 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <button className="dd-link-btn" onClick={() => setCreatingRecipe(true)}>+ рецепт</button>
           <button className="dd-link-btn" onClick={() => setCreatingFood(true)}>＋ продукт</button>
         </div>
-                {slot && (
-          <div className="px-4 text-[0.75rem]" style={{ color: 'var(--mut)' }}>добавляем в «{slot.emoji} {slot.name}» — нажми на продукт, чтобы записать</div>
-        )}
         <div className="px-4 pt-1 dd-searchwrap">
           <input
-            className="dd-input" placeholder={slot ? `Добавить в «${slot.name}»…` : 'Поиск: название или штрихкод…'}
+            className="dd-input" placeholder={slot ? `Добавить в ${slot.name.toLowerCase()}…` : 'Поиск: название или штрихкод…'}
             value={q} onChange={e => setQ(e.target.value)} style={{ paddingRight: 40 }}
           />
           <button className="dd-scanbtn" aria-label="Сканировать штрихкод" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open'); }}>
@@ -152,11 +150,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
         )}
         {searching ? (
           <>
-            {recentMatches.length > 0 && (
-              <Section title="🕘 Из недавних" id="srch-recent" defaultOpen>
-                {recentMatches.map(i => <ItemRow key={`rm-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
-              </Section>
-            )}
+
             <Section title="⌕ Найдено" id="srch-found" defaultOpen>
               {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
                 <div className="text-center" style={{ marginTop: '28vh' }}>
@@ -170,7 +164,10 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
                   {q.trim() && <button className="dd-action strong" onClick={() => setCreatingFood(true)}>＋ {q.trim()}</button>}
                 </div>
               )}
-              {searchRest.map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
+              {[...searchRest].sort((a, b) => {
+                const rank = (x: CatalogItem) => recentSet.has(`${x.kind}:${x.id}`) ? 0 : 1;
+                return rank(a) - rank(b);
+              }).map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)}  onManage={setManaging} onWarn={() => setExplain('warn')} />)}
             </Section>
             {(offHits ?? []).length > 0 && (
               <div className="dd-allhead" style={{ marginTop: 2 }}>Из интернета · Open Food Facts</div>
@@ -202,7 +199,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
         ) : (
           <>
             <div className="dd-allhead">Все продукты</div>
-            {allItems.map(i => <ItemRow key={`a-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)} onStar={() => toggleStar(i)} onManage={setManaging} onWarn={() => setExplain('warn')} />)}
+            {allItems.map(i => <ItemRow key={`a-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)}  onManage={setManaging} onWarn={() => setExplain('warn')} />)}
           </>
         )}
       </div>
@@ -275,8 +272,8 @@ function defaultGramsFor(i: CatalogItem): number {
   return i.kind === 'food' ? (i.food.portionG ?? 100) : 150;
 }
 
-function ItemRow({ item, onOpen, onStar, onManage, onWarn }: {
-  item: CatalogItem; onOpen: () => void; onStar: () => void;
+function ItemRow({ item, onOpen, onManage, onWarn }: {
+  item: CatalogItem; onOpen: () => void; onStar?: () => void;
   onManage: (i: CatalogItem) => void; onWarn: (w: string) => void;
 }) {
   const perLabel = item.unit === 'pc' ? 'ккал/порц.' : 'ккал/100 г';
@@ -286,7 +283,7 @@ function ItemRow({ item, onOpen, onStar, onManage, onWarn }: {
     <div className="dd-item" onClick={onOpen} role="button">
       <div className="min-w-0 flex-1">
         <div className="nm flex items-center gap-1.5">
-          <span className="dd-star cursor-pointer" onClick={e => { e.stopPropagation(); onStar(); }}>{item.star ? '⭐' : '☆'}</span>
+
           <span className="truncate">{item.name}</span>
           {item.suspicious && <span className="dd-warnmark cursor-pointer" onClick={e => { e.stopPropagation(); onWarn('warn'); }}>⚠️</span>}
         </div>
@@ -314,6 +311,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
   const [time, setTime] = useState('');
   const [slotId, setSlotId] = useState('');
   const [warn, setWarn] = useState(false);
+  const [kbPad, setKbPad] = useState(false); // В., 08.11: клавиатура открывает содержимое за «Сохранить»
 
   const isPc = item?.unit === 'pc';
 
@@ -373,7 +371,8 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
       <div className="dd-input-row">
         <div className="flex-1 min-w-0">
           <div className="dd-field-label" style={{ marginTop: 0 }}>{isPc ? 'Порций (шт)' : 'Вес порции, г'}</div>
-          <input className="dd-input dd-num" type="number" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} />
+          <input className="dd-input dd-num" type="number" inputMode="decimal" value={qty}
+            onFocus={() => setKbPad(true)} onBlur={() => setKbPad(false)} onChange={e => setQty(e.target.value)} />
         </div>
         <div className="min-w-0" style={{ width: 116 }}>
           <div className="dd-field-label" style={{ marginTop: 0 }}>Время</div>
@@ -410,7 +409,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
             <button className="dd-action" onClick={onClose}>Не сохранять</button>
             <button className="dd-action strong" onClick={() => doSave(true)}>Сохранить как есть</button>
           </>
-          : <button className="dd-action strong" onClick={() => doSave()}>Сохранить</button>}
+          : <button className="dd-action strong" style={{ marginBottom: kbPad ? 260 : 0, transition: 'margin-bottom .25s' }} onClick={() => doSave()}>Сохранить</button>}
       </div>
     </Sheet>
   );

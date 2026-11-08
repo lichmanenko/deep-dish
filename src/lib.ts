@@ -187,7 +187,7 @@ export function kbjuSuspicious(kcal: number, p: number, f: number, c: number, na
   if (!kcal) return false;
   const est = p * 4 + c * 4 + f * 9;
   if (ALCO_RE.test(name)) return false; // алкоголь: 7 ккал/г не лезет в 4/4/9 — без предупреждений
-  return Math.abs(est - kcal) / kcal > 0.25;
+  return Math.abs(est - kcal) / kcal > 0.15; // В., 08.11: порог 15%
 }
 
 export const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
