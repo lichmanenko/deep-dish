@@ -146,7 +146,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                 {ringMode === 'kcal' ? (
                   <Ring percent={percent}>
                     <div className="text-lg font-extrabold dd-num">{fmt(rest)}</div>
-                    {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось, ккал</div>}
+                    {!compact && <div className="text-[0.625rem]" style={{ color: 'var(--mut)' }}>осталось</div>}
                   </Ring>
                 ) : (
                   <MacroRing p={totals.p * 4} f={totals.f * 9} c={totals.c * 4} cap={target}>

@@ -188,13 +188,10 @@ input[type=time].dd-input { padding: 0 8px; }
   /* В., 03.11 (второй заход): прямоугольник убираем совсем — верх зоны полностью прозрачен,
      матовость даёт только blur («фростед-гласс»), и лишь нижние ~20% мягко затемняются фоном,
      чтобы приёмы, проезжая под зоной, растворялись, а не упирались в край */
-  background: linear-gradient(180deg,
-    transparent 0%,
-    transparent 58%,
-    color-mix(in srgb, var(--bg) 38%, transparent) 76%,
-    var(--bg) 100%);
-  backdrop-filter: blur(10px) saturate(1.15);
-  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  background: transparent;
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  box-shadow: 0 1px 0 0 rgba(0,0,0,.06), 0 4px 16px -8px rgba(0,0,0,.10); /* тонкий разделитель вместо заливки */
   padding: 6px 0 8px;
 }
 
