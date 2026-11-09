@@ -315,14 +315,35 @@ def admin_telemetry(since: int = 0, limit: int = 200,
         users = c.execute("SELECT userId, nickname FROM users").fetchall()
         nick = {u['userId']: u['nickname'] for u in users}
         # последний sync_result каждого
+        def safe_props(raw):
+            p = json.loads(raw or '{}')
+            if isinstance(p, str):  # двойная сериализация (баг синка, пофикшен v0.4.5)
+                try: p = json.loads(p)
+                except Exception: p = {}
+            return p if isinstance(p, dict) else {}
+
         latest: dict[str, Any] = {}
         for r in c.execute("SELECT ts, userId, props FROM events WHERE name = 'sync_result' ORDER BY ts DESC").fetchall():
             if r['userId'] in latest:
                 continue
-            latest[r['userId']] = {'nick': nick.get(r['userId']), 'ts': r['ts'], **json.loads(r['props'] or '{}')}
+            latest[r['userId']] = {'nick': nick.get(r['userId']), 'ts': r['ts'], **safe_props(r['props'])}
         return {'events': [{'ts': r['ts'], 'nick': nick.get(r['userId']), 'name': r['name'],
-                            'props': json.loads(r['props'] or '{}')} for r in evs],
+                            'props': safe_props(r['props'])} for r in evs],
                 'latestByUser': latest}
+
+
+@app.post('/admin/push-catalog')
+def admin_push_catalog(user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
+    """Админ: перезаморозить applied всех продуктов/рецептов → все члены семьи
+    получат свежий каталог при следующем синке (В., 09.11: «отправить каталог всем»)."""
+    if user['role'] != 'admin':
+        raise HTTPException(403, 'только администратор')
+    now = now_ms()
+    with db() as c:
+        cur = c.execute("UPDATE items SET applied = ? WHERE kind IN ('foods','recipes') AND deleted = 0", (now,))
+        n = cur.rowcount
+        log.info('push_catalog user=%s nick=%s applied_refreshed=%d', user['userId'], user['nickname'], n)
+    return {'ok': True, 'applied': n}
 
 
 @app.get('/off/search')
@@ -659,9 +680,18 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
         # 2) события метрик (идемпотентно по id)
         for ev in payload.events[:500]:
             try:
+                # v0.4.5: клиент шлёт props как JSON-строку → деспирализуем перед записью
+                props = ev.get('props') or {}
+                if isinstance(props, str):
+                    try:
+                        props = json.loads(props)
+                    except Exception:
+                        props = {}
+                if not isinstance(props, dict):
+                    props = {}
                 c.execute('INSERT OR IGNORE INTO events (id, userId, ts, name, props) VALUES (?,?,?,?,?)',
                           (str(ev.get('id')), uid, int(ev.get('ts') or 0), str(ev.get('name') or '?'),
-                           json.dumps(ev.get('props') or {}, ensure_ascii=False)))
+                           json.dumps(props, ensure_ascii=False)))
             except Exception:
                 pass
 
