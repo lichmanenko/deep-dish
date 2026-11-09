@@ -602,28 +602,31 @@ function Calendar({ open, date, onClose, onPick, filled }: { open: boolean; date
 }
 
 function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () => void }) {
-  const [grams, setGrams] = useState('');
+  const [qty, setQty] = useState('');
   const [time, setTime] = useState('');
+  const [isPcEdit, setIsPcEdit] = useState(false);
   React.useEffect(() => {
     (async () => {
-    if (entry) {
-      // порционные записи хранят шт×100: в поле — штуки (В., 03.11: при правке показывались граммы)
-      const f = await (entry.kind === 'food' ? db.foods.get(entry.refId) : db.recipes.get(entry.refId));
-      const isPcEdit = f?.unit === 'pc';
-      setGrams(String(isPcEdit ? Math.round((entry.grams / 100) * 100) / 100 : Math.round(entry.grams)));
-      setTime(entry.timeEaten);
-    }
+      if (entry) {
+        // порционные записи хранят шт×100: в поле — штуки (В., 03.11+09.11: «1гр 0ккал» — полная развязка)
+        const f = await (entry.kind === 'food' ? db.foods.get(entry.refId) : db.recipes.get(entry.refId));
+        const pc = f?.unit === 'pc';
+        setIsPcEdit(pc);
+        setQty(String(pc ? Math.round((entry.grams / 100) * 100) / 100 : Math.round(entry.grams)));
+        setTime(entry.timeEaten);
+      }
     })();
   }, [entry]);
   if (!entry) return null;
-  const g = parseFloat(grams.replace(',', '.')) || 0;
-  const ratio = g / Math.max(entry.grams, 0.01);
+  const n = parseFloat(qty.replace(',', '.')) || 0;
+  const grams = isPcEdit ? n * 100 : n; // внутреннее представление (шт×100 или г)
+  const ratio = grams / Math.max(entry.grams, 0.01); // отношение к исходному — калории масштабируются
   return (
     <Sheet open={!!entry} onClose={onClose} title="Запись" note="Поправь вес или время — пересчитается автоматически.">
       <div className="dd-input-row">
         <div className="flex-1">
-          <div className="dd-field-label" style={{ marginTop: 0 }}>Вес, г</div>
-          <input className="dd-input dd-num" type="number" inputMode="decimal" value={grams} onChange={e => setGrams(e.target.value)} />
+          <div className="dd-field-label" style={{ marginTop: 0 }}>{isPcEdit ? 'Порций (шт)' : 'Вес, г'}</div>
+          <input className="dd-input dd-num" type="number" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} />
         </div>
         <div style={{ width: 120 }}>
           <div className="dd-field-label" style={{ marginTop: 0 }}>Время</div>
@@ -636,10 +639,9 @@ function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () =
       <div className="flex gap-2 mt-4">
         <button className="dd-action" onClick={async () => { await deleteEntry(entry.id); track('entry_deleted'); onClose(); }}>Удалить</button>
         <button className="dd-action strong" onClick={async () => {
-          const k = g / Math.max(entry.grams, 0.01);
-          await saveEntry({ ...entry, grams: g, timeEaten: time, snapshot: {
-            kcal: Math.round(entry.snapshot.kcal * k), p: Math.round(entry.snapshot.p * k * 10) / 10,
-            f: Math.round(entry.snapshot.f * k * 10) / 10, c: Math.round(entry.snapshot.c * k * 10) / 10,
+          await saveEntry({ ...entry, grams, timeEaten: time, snapshot: {
+            kcal: Math.round(entry.snapshot.kcal * ratio), p: Math.round(entry.snapshot.p * ratio * 10) / 10,
+            f: Math.round(entry.snapshot.f * ratio * 10) / 10, c: Math.round(entry.snapshot.c * ratio * 10) / 10,
           } });
           track('entry_edited'); onClose();
         }}>Сохранить</button>
