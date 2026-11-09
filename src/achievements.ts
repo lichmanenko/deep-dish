@@ -56,7 +56,7 @@ export async function detectAchievements(): Promise<string[]> {
     db.weightLogs.where('userId').equals(LOCAL_USER).filter(w => !w.deletedAt).toArray(),
     db.achievements.toArray(),
   ]);
-  const have = new Set(mine.filter(a => !a.deletedAt).map(a => a.code)); // tombstone не блокирует перевыдачу (В., 03.11: пропавшая first_entry)
+  const have = new Set(mine.filter(a => !a.deletedAt && a.userId === LOCAL_USER).map(a => a.code)); // аудит: чужие ачивки не блокируют свои // tombstone не блокирует перевыдачу (В., 03.11: пропавшая first_entry)
   const unlocked: string[] = [];
 
   // ── эпоха живого дневника (В., 25.10, разбирательство №2): достижения считаем только по
@@ -77,7 +77,7 @@ export async function detectAchievements(): Promise<string[]> {
 
   // состав справочника меняется (В., 26.10): исчезнувшие ачивки гасим тихо,
   // пользователь уведомлений не получает; для нас — событие в метрики
-  const removed = mine.filter(a => !a.deletedAt && !ACH.some(d => d.code === a.code));
+  const removed = mine.filter(a => !a.deletedAt && a.userId === LOCAL_USER && !ACH.some(d => d.code === a.code));
   if (removed.length) {
     const nowR = Date.now();
     await Promise.all(removed.map(a => db.achievements.update(a.id, { deletedAt: nowR, updatedAt: nowR })));
@@ -85,7 +85,7 @@ export async function detectAchievements(): Promise<string[]> {
   }
 
   // ачивки, заработанные до текущего сегмента (или до границы эпохи), — в tombstone
-  const stale = mine.filter(a => !a.deletedAt && a.unlockedAt < segStartMs);
+  const stale = mine.filter(a => !a.deletedAt && a.userId === LOCAL_USER && a.unlockedAt < segStartMs);
   if (stale.length) {
     const now3 = Date.now();
     await Promise.all(stale.map(a => db.achievements.update(a.id, { deletedAt: now3, updatedAt: now3 })));
