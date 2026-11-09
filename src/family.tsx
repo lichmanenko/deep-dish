@@ -23,6 +23,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [achOpen, setAchOpen] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
+  const [pushDone, setPushDone] = useState(false);
   const [achFilter, setAchFilter] = useState('all');
 
   async function loadHcode() {
@@ -117,11 +118,22 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                         signal: AbortSignal.timeout(15000),
                       });
                       const j = await r.json();
-                      setPushMsg(j.ok ? `Каталог отправлен всем (${j.applied || 0} записей). Члены семьи увидят обновление при следующем открытии.` : `Ошибка: ${j.detail || r.status}`);
+                      setPushMsg(j.ok ? `Каталог отправлен всем (${j.applied || 0} записей).` : `Ошибка: ${j.detail || r.status}`);
+                      if (j.ok) {
+                        // ГЛАВНОЕ: очистить локальные tombstone каталога ДО синка —
+                        // иначе force-push вытолкнет их на сервер и снова удалит продукты (09.11)
+                        await db.foods.filter(f => f.deletedAt).modify({ deletedAt: null as unknown as number | null }).catch(() => {});
+                        try {
+                          await runSync(false);
+                          setPushDone(true);
+                          setTimeout(() => setPushDone(false), 5000);
+                        } catch { /* авто-синк доедет */ }
+                      }
                     } catch (e) { setPushMsg(`Не получилось: ${(e as Error).message}`); }
                     setPushBusy(false);
                   }}>{pushBusy ? 'Отправляю…' : 'Отправить каталог всем'}</button>
                 {pushMsg && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>{pushMsg}</div>}
+                {pushDone && <div className="text-[0.6875rem]" style={{ color: 'var(--ok)' }}>✓ у тебя каталог уже обновлён</div>}
               </>)}
             </div>
             <div className="py-3" style={{ borderTop: '1px solid var(--tr)' }}>
