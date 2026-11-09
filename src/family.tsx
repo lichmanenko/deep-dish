@@ -97,7 +97,8 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
           <button className="dd-action strong" style={{ width: '100%' }} disabled={busy} onClick={doSync}>
                 {busy ? 'Синхронизирую…' : 'Синхронизировать'}
               </button>
-              <button className="dd-action" style={{ width: '100%', marginTop: 8, color: 'var(--warn)' }}
+                            <div style={{ borderTop: '1px solid var(--tr)', marginTop: 12, paddingTop: 12 }}></div>
+<button className="dd-action" style={{ width: '100%', marginTop: 8, color: 'var(--warn)' }}
                 onClick={() => { saveSync(null); setSync(null); setMsg('Это устройство отключено от семейного обмена. Все записи на месте.'); }}>Отключить это устройство</button>
               {isAdmin && (<>
                 <button className="dd-action" style={{ width: '100%', marginTop: 8 }}
@@ -164,7 +165,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                       track('health_code_reset');
                     }}>Обновить</button>
                   </div>
-                  {stale && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>код из памяти — свежесть проверим в домашней сети</div>}
+                  {stale && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>код сохранён — при домашнем Wi-Fi проверим актуальность</div>}
                 </>
               ) : (
                 <div className="flex gap-2 items-center mt-1 flex-wrap">

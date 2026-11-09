@@ -156,7 +156,7 @@ select.dd-input option { background: var(--bg2); color: var(--tx); }
 input[type=time].dd-input { padding: 0 8px; }
 .dd-input[disabled] { opacity: .75; }
 .dd-input[readonly] { opacity: .9; }
-.dd-input::placeholder { color: color-mix(in srgb, var(--mut) 62%, var(--bg)); }
+.dd-input::placeholder { color: color-mix(in srgb, var(--mut) 48%, var(--bg)); } /* v0.7.16: бледнее — незаполненность */
 .dd-field-label { font-size: 0.75rem; font-weight: 600; color: var(--mut); margin: 12px 2px 6px; }
 .dd-input-row { display: flex; gap: 8px; }
 .dd-input-row .dd-input { flex: 1; }
@@ -324,7 +324,7 @@ input[type=time].dd-input { padding: 0 8px; }
 }
 .dd-allhead { font-size: 0.6875rem; font-weight: 700; color: var(--mut); margin: 14px 2px 8px; letter-spacing: .04em; text-transform: uppercase; }
 .dd-slot-save { background: none; border: none; font-size: 0.875rem; cursor: pointer; padding: 4px 7px; opacity: .7; }
-.dd-slot-add { font-size: 0.75rem; color: var(--acc-fg); padding: 6px 0 2px 25px; cursor: pointer; font-weight: 600; }
+.dd-slot-add { color: var(--acc-fg); } /* v0.7.16: акцент вместо мутного */ { font-size: 0.75rem; color: var(--acc-fg); padding: 6px 0 2px 25px; cursor: pointer; font-weight: 600; }
 
 /* ── Прочее ── */
 .dd-info {
