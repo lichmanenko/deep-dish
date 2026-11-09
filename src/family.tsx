@@ -122,7 +122,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                       if (j.ok) {
                         // ГЛАВНОЕ: очистить локальные tombstone каталога ДО синка —
                         // иначе force-push вытолкнет их на сервер и снова удалит продукты (09.11)
-                        await db.foods.filter(f => f.deletedAt).modify({ deletedAt: null as unknown as number | null }).catch(() => {});
+                        await db.foods.filter(f => f.deletedAt).modify((f: { deletedAt: number | null }) => { f.deletedAt = null; }).catch(() => {});
                         try {
                           await runSync(false);
                           setPushDone(true);
