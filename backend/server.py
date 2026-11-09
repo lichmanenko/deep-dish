@@ -66,7 +66,7 @@ PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'p
 FAMILY_KINDS = {'achievements'}  # v0.7.6: публичные записи семьи (достижения — факт известен всем)
 ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS | FAMILY_KINDS
 
-app = FastAPI(title='Deep Dish sync', version='0.4.4')
+app = FastAPI(title='Deep Dish sync', version='0.4.5')
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
@@ -116,10 +116,10 @@ def init_db() -> None:
         # при старте: всем существующим записям свежий applied → ближайший синк каждого клиента
         # получит полную базу (идемпотентные put по id), дальше курсор живёт по серверным часам.
         mark = c.execute("SELECT v FROM _meta WHERE k = 'applied_refresh'").fetchone() if _meta_ready(c) else None
-        if not mark:
+        if not mark or mark['v'] != '2':  # v0.4.5: повторная перезаморозка (дедуп-инцидент 09.11)
             c.execute("UPDATE items SET applied = ? WHERE kind != 'offcache'", (int(time.time() * 1000),))
             c.execute("CREATE TABLE IF NOT EXISTS _meta (k TEXT PRIMARY KEY, v TEXT)")
-            c.execute("INSERT OR REPLACE INTO _meta (k, v) VALUES ('applied_refresh', '1')")
+            c.execute("INSERT OR REPLACE INTO _meta (k, v) VALUES ('applied_refresh', '2')")
         c.execute('CREATE INDEX IF NOT EXISTS idx_items_applied ON items (applied)')
         c.execute('''CREATE TABLE IF NOT EXISTS events (
             id TEXT PRIMARY KEY, userId TEXT NOT NULL, ts INTEGER NOT NULL,
