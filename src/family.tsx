@@ -125,8 +125,6 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                         // иначе force-push вытолкнет их на сервер и снова удалит продукты (09.11)
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         await db.foods.filter((f: any) => f.deletedAt).each(async (f: any) => { await db.foods.update(f.id, { deletedAt: null }); }).catch(() => {});
-                        // иначе force-push вытолкнет их на сервер и снова удалит продукты (09.11)
-                        await db.foods.filter(f => f.deletedAt).modify((f: { deletedAt: number | null }) => { f.deletedAt = null; }).catch(() => {});
                         try {
                           await runSync(false);
                           setPushDone(true);
