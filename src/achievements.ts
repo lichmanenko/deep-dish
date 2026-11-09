@@ -65,6 +65,7 @@ export async function detectAchievements(): Promise<string[]> {
   const firstOpen = (await db.events.where('name').equals('app_open').first())?.ts;
   if (!firstOpen) return []; // нет и следа живого запуска — достижений не считаем (импорт не в зачёт)
   const eraStartMs = firstOpen;
+  const liveWeights = weights.filter((w: { date: string }) => new Date(w.date + 'T00:00:00').getTime() >= eraStartMs); // v0.7.16: импорт не в зачёт
   const liveEntries = entries.filter(e => new Date(e.date + 'T00:00:00').getTime() >= new Date(eraStartMs).setHours(0, 0, 0, 0));
 
   // ── сегмент непрерывности: пауза ≥90 дней обнуляет достижения — хвостовая ИЛИ внутренняя
@@ -148,8 +149,8 @@ export async function detectAchievements(): Promise<string[]> {
     if (okWeek) unlocked.push('moment_week');
   }
   // неделя взвешиваний
-  const wDays = new Set(weights.map(w => w.date));
-  if (last7.every(d => wDays.has(d)) && !have.has('weigh_week')) unlocked.push('weigh_week');
+  const wDaysLive = new Set(liveWeights.map(w => w.date));
+  if (last7.every(d => wDaysLive.has(d)) && !have.has('weigh_week')) unlocked.push('weigh_week');
   // вехи веса: текущий (последний) вес от стартового (первого)
   if (weights.length >= 2) {
     const ws = weights.slice().sort((a, b) => a.date < b.date ? -1 : 1);
