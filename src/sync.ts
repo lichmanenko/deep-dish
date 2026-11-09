@@ -149,6 +149,21 @@ export async function runSync(force = false): Promise<SyncResult> {
   return { ok: true, pushed: r.applied ?? changes.length, pulled };
 }
 
+/** Полная перезагрузка с сервера (В., 09.11): сначала пушим всё локальное (защита от потери),
+ *  потом since=0 и тянем всю базу. Сервер — источник истины для каталога.
+ *  ПОСЛЕДСТВИЯ (изучены): (1) несинхронизированные локальные правды теряются — пушим до pull;
+ *  (2) локальные tombstone каталога перетираются серверными версиями (удалённые «воскресают»);
+ *  (3) объём: ~3100 записей (~2-3 сек); (4) идемпотентно — повтор не ломает. */
+export async function fullReload(): Promise<SyncResult> {
+  // шаг 1: вытолкнуть ВСЁ локальное (широкое окно)
+  const push1 = await runSync(true).catch(() => ({ ok: false, pushed: 0, pulled: 0 }));
+  // шаг 2: обнулить курсор и тянуть всё
+  const st = loadSync();
+  if (st) saveSync({ ...st, since: 0 });
+  const pull = await runSync(false).catch(e => ({ ok: false, pushed: 0, pulled: 0, error: String(e) }));
+  return { ok: pull.ok, pushed: (push1.pushed ?? 0) + (pull.pushed ?? 0), pulled: pull.pulled ?? 0, error: pull.error };
+}
+
 /** авто-синк: при старте и возврате сети, не чаще раза в 5 минут */
 let lastAuto = 0;
 export function autoSync() {

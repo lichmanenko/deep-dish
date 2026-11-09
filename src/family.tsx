@@ -21,6 +21,8 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [stale, setStale] = useState(false);
   const [hErr, setHErr] = useState<'net' | 'old' | null>(null);
   const [achOpen, setAchOpen] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMsg, setPushMsg] = useState<string | null>(null);
   const [achFilter, setAchFilter] = useState('all');
 
   async function loadHcode() {
@@ -96,7 +98,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
               </button>
               <button className="dd-action" style={{ width: '100%', marginTop: 8, color: 'var(--warn)' }}
                 onClick={() => { saveSync(null); setSync(null); setMsg('Это устройство отключено от семейного обмена. Все записи на месте.'); }}>Отключить это устройство</button>
-              {isAdmin && (
+              {isAdmin && (<>
                 <button className="dd-action" style={{ width: '100%', marginTop: 8 }}
                   onClick={() => {
                     navigator.clipboard?.writeText(sync.token)
@@ -104,7 +106,23 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                       .catch(() => setMsg('Токен: ' + sync.token));
                     track('admin_token_copy');
                   }}>Пригласить нового участника</button>
-              )}
+                <button className="dd-action" style={{ width: '100%', marginTop: 8 }} disabled={pushBusy}
+                  onClick={async () => {
+                    setPushBusy(true); setPushMsg(null);
+                    try {
+                      const st = loadSync();
+                      if (!st) return;
+                      const r = await fetch(st.server.replace(/\/+$/, '') + '/admin/push-catalog', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
+                        signal: AbortSignal.timeout(15000),
+                      });
+                      const j = await r.json();
+                      setPushMsg(j.ok ? `Каталог отправлен всем (${j.applied || 0} записей). Члены семьи увидят обновление при следующем открытии.` : `Ошибка: ${j.detail || r.status}`);
+                    } catch (e) { setPushMsg(`Не получилось: ${(e as Error).message}`); }
+                    setPushBusy(false);
+                  }}>{pushBusy ? 'Отправляю…' : 'Отправить каталог всем'}</button>
+                {pushMsg && <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>{pushMsg}</div>}
+              </>)}
             </div>
             <div className="py-3" style={{ borderTop: '1px solid var(--tr)' }}>
               <div className="text-sm font-semibold mb-1">Мост Apple Health</div>
