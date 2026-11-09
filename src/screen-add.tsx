@@ -311,7 +311,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
   const [time, setTime] = useState('');
   const [slotId, setSlotId] = useState('');
   const [warn, setWarn] = useState(false);
-  const [kbPad, setKbPad] = useState(false); // В., 08.11: клавиатура открывает содержимое за «Сохранить»
+  // kbPad убран (В., 09.11): margin 260px на кнопке уводил весь шит вверх
 
   const isPc = item?.unit === 'pc';
 
@@ -372,7 +372,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
         <div className="flex-1 min-w-0">
           <div className="dd-field-label" style={{ marginTop: 0 }}>{isPc ? 'Порций (шт)' : 'Вес порции, г'}</div>
           <input className="dd-input dd-num" type="number" inputMode="decimal" value={qty}
-            onFocus={() => setKbPad(true)} onBlur={() => setKbPad(false)} onChange={e => setQty(e.target.value)} />
+            onChange={e => setQty(e.target.value)} />
         </div>
         <div className="min-w-0" style={{ width: 116 }}>
           <div className="dd-field-label" style={{ marginTop: 0 }}>Время</div>
@@ -409,7 +409,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
             <button className="dd-action" onClick={onClose}>Не сохранять</button>
             <button className="dd-action strong" onClick={() => doSave(true)}>Сохранить как есть</button>
           </>
-          : <button className="dd-action strong" style={{ marginBottom: kbPad ? 260 : 0, transition: 'margin-bottom .25s' }} onClick={() => doSave()}>Сохранить</button>}
+          : <button className="dd-action strong" onClick={() => doSave()}>Сохранить</button>}
       </div>
     </Sheet>
   );
