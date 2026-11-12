@@ -125,7 +125,9 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                         // ГЛАВНОЕ: очистить локальные tombstone каталога ДО синка —
                         // иначе force-push вытолкнет их на сервер и снова удалит продукты (09.11)
                         // (каждая вне each: Dexie each = readonly transaction, update внутри = ошибка)
-                        const deadFoods = await db.foods.filter((f: { deletedAt: number | null }) => f.deletedAt != null).toArray();
+                        // v0.7.17: осознанные удаления (delBy='user') не воскрешаем —
+                        // чистим только эхо дедупа/синков без провенанса
+                        const deadFoods = await db.foods.filter((f: { deletedAt: number | null; delBy?: string | null }) => f.deletedAt != null && f.delBy !== 'user').toArray();
                         for (const f of deadFoods) {
                           await db.foods.update(f.id, { deletedAt: null });
                         }

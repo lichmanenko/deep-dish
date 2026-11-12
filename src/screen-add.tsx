@@ -474,7 +474,7 @@ function ManageItem({ item, onClose }: { item: CatalogItem | null; onClose: () =
   }
   async function del() {
     if (!item) return;
-    if (item.kind === 'food') await db.foods.update(item.id, { deletedAt: Date.now(), updatedAt: Date.now() });
+    if (item.kind === 'food') await db.foods.update(item.id, { deletedAt: Date.now(), updatedAt: Date.now(), delBy: 'user' }); // v0.7.17: провенанс — синхронизируется только осознанное UI-удаление
     else await db.recipes.update(item.id, { deletedAt: Date.now(), updatedAt: Date.now() });
     track(item.kind === 'food' ? 'food_deleted' : 'recipe_deleted');
     onClose();

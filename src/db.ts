@@ -19,6 +19,9 @@ export interface Food {
   source: FoodSource; ownerId: string; isPublic: boolean; star?: boolean;
   /** служебный продукт (импорт MFP): в каталоге и поиске не показывается, записи отображаются */
   hidden?: boolean;
+  /** провенанс удаления (v0.7.17): 'user' — осознанное удаление в UI (синхронизируется);
+   *  отсутствует у tombstone-эха дедупа v0.7.10–0.7.14 (не синхронизируется, воскрешается) */
+  delBy?: 'user' | null;
   createdAt: number; updatedAt: number; deletedAt: number | null;
 }
 
