@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Deep Dish — дизайн-направление</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(180deg, #F2F3F6 0%, #E9EBEF 100%);
+    color: #1C1D20; padding: 24px 16px 70px;
+  }
+  .intro { max-width: 640px; margin: 0 auto 26px; }
+  .intro h1 { font-size: 27px; letter-spacing: -0.02em; }
+  .intro p { margin-top: 8px; font-size: 15px; line-height: 1.55; color: #4A4C52; }
+  .intro p b { color: #1C1D20; }
+  .note {
+    max-width: 640px; margin: 0 auto 14px; background: rgba(255,255,255,.72);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    border-radius: 20px; padding: 18px 20px; font-size: 14px; line-height: 1.6; color: #3A3C42;
+    box-shadow: 0 10px 28px rgba(20,22,28,.07);
+  }
+  .note h3 { font-size: 15px; margin-bottom: 8px; }
+  .note ul { margin: 6px 0 0 18px; }
+  .note li { margin-top: 4px; }
+  .sec-h { max-width: 640px; margin: 36px auto 8px; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #787B82; }
+  .scheme { max-width: 640px; margin: 0 auto 40px; }
+  .scheme-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .scheme-head .num {
+    font-size: 13px; font-weight: 700; color: #fff; background: rgba(28,29,32,.85);
+    border-radius: 9px; padding: 3px 9px; letter-spacing: 0.04em;
+  }
+  .scheme-head h2 { font-size: 20px; letter-spacing: -0.01em; }
+  .scheme-head .mood { font-size: 13px; color: #6A6C73; }
+  .swatches { display: flex; gap: 7px; margin-bottom: 14px; flex-wrap: wrap; }
+  .sw { flex: 1 1 64px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(20,22,28,.08); }
+  .sw .c { height: 36px; }
+  .sw .l { font-size: 10px; padding: 4px 6px; background: rgba(255,255,255,.9); color: #444; white-space: nowrap; overflow: hidden; }
+  .pair { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 560px) { .pair { grid-template-columns: 1fr 1fr; } }
+  .phone {
+    border-radius: 30px; padding: 22px 18px;
+    background: linear-gradient(185deg, var(--bg) 0%, var(--bg2) 100%);
+    color: var(--tx);
+    box-shadow: 0 18px 44px rgba(15,18,26,.16);
+  }
+  .phone .mode { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--mut); margin-bottom: 14px; }
+  .row1 { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; }
+  .row1 .h { font-size: 23px; font-weight: 700; letter-spacing: -0.01em; }
+  .row1 .d { font-size: 13px; color: var(--mut); }
+  .ring-wrap {
+    display: flex; align-items: center; gap: 18px; padding: 18px 16px; border-radius: 24px;
+    background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    margin-bottom: 14px;
+  }
+  .ring { position: relative; width: 88px; height: 88px; flex: none; }
+  .ring svg { transform: rotate(-90deg); }
+  .ring .val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ring .val .n { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .ring .val .u { font-size: 10px; color: var(--mut); }
+  .kcal-info .big { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kcal-info .sub { font-size: 12px; color: var(--mut); margin-top: 3px; }
+  .chips { display: flex; gap: 9px; margin-bottom: 18px; }
+  .chip { flex: 1; text-align: center; padding: 10px 4px; border-radius: 18px; background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+  .chip .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chip .k { font-size: 11px; color: var(--mut); margin-top: 1px; }
+  .slot { padding: 15px 16px 13px; border-radius: 22px; background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); margin-bottom: 6px; }
+  .slot .nm { font-size: 14.5px; font-weight: 650; display: flex; align-items: center; gap: 9px; }
+  .slot .nm i { width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(135deg, var(--acc), var(--acc2)); display: inline-block; }
+  .slot .kc { font-size: 12.5px; color: var(--mut); margin: 2px 0 6px 17px; }
+  .item { display: flex; justify-content: space-between; font-size: 13px; color: var(--mut); padding: 5px 16px 5px 17px; }
+  .btn {
+    margin-top: 16px; width: 100%; padding: 15px; border-radius: 20px; border: none;
+    background: var(--veil); color: var(--acc-fg); font-size: 15px; font-weight: 650;
+  }
+  /* Иконки */
+  .icon-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; margin: 0 auto 28px; max-width: 640px; }
+  .icon-card { border-radius: 22px; padding: 14px 8px 11px; text-align: center; background: var(--bg); box-shadow: 0 8px 20px rgba(15,18,26,.09); }
+  .icon-card .cap { margin-top: 9px; font-size: 11px; color: #6A6C73; line-height: 1.3; }
+  .icon-card svg { display: block; margin: 0 auto; }
+  .icons-sec { max-width: 640px; margin: 0 auto 34px; }
+  .icons-sec .scheme-head { margin-bottom: 12px; }
+  .icon-desc { max-width: 640px; margin: 0 auto 10px; font-size: 13.5px; color: #4A4C52; line-height: 1.5; }
+  /* Типографика */
+  .type-demo { max-width: 640px; margin: 0 auto 8px; background: rgba(255,255,255,.72); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border-radius: 22px; padding: 22px; box-shadow: 0 10px 28px rgba(20,22,28,.07); }
+  .type-demo .t1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .type-demo .t3 { font-size: 13px; color: #6A6C73; margin-top: 4px; }
+  .type-demo .t4 { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; margin-top: 14px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Deep Dish — дизайн-направление</h1>
+  <p>Восемь гамм (1–3 твои кандидаты, 4 — по презентации BHC, 5–8 достроенные), в каждой — светлая и тёмная версии экрана «Сегодня». <b>Выбери гамму (номер + имя) и концепт иконки (И1–И4)</b> — полные макеты экранов согласуем следующим раундом уже в выбранной гамме.</p>
+</div>
+
+<div class="note">
+  <h3>Дизайн-язык — по твоему брифу, уже применён в этих макетах</h3>
+  <ul>
+    <li><b>Воздух</b>: пространство вместо линий — разделение блоков отступами, не рамками;</li>
+    <li><b>Гармоничные градиенты</b>: фон — мягкий вертикальный перелив, акценты (кольцо, точки) — градиент от основного тона к светлому;</li>
+    <li><b>Без очерченных границ</b>: карточки — «стекло» (полупрозрачное размытие поверх градиента), обводок нет вообще;</li>
+    <li><b>Без ярких кнопок</b>: действие — тонкая заливка 8–10% акцентом с текстом цвета акцента; primary-кнопок в лице приложения не будет.</li>
+  </ul>
+</div>
+
+<div class="type-demo">
+  <div class="t1">Сегодня</div>
+  <div class="t3">суббота, 3 октября</div>
+  <div class="t4">1 740 <span style="font-size:16px;font-weight:600;color:#6A6C73">ккал из 2 410</span></div>
+  <div class="t3" style="margin-top:10px">Типографика: San Francisco Pro (системный iOS), размеры 28/17/13/34, табличные цифры для калорий.</div>
+</div>
+
+<div class="sec-h">Цветовые гаммы</div>
+
+<template id="tpl">
+  <div class="phone">
+    <div class="mode"></div>
+    <div class="row1"><div class="h">Сегодня</div><div class="d">сб, 3 окт</div></div>
+    <div class="ring-wrap">
+      <div class="ring">
+        <svg width="88" height="88" viewBox="0 0 88 88">
+          <defs>
+            <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="var(--acc)"/>
+              <stop offset="1" stop-color="var(--acc2)"/>
+            </linearGradient>
+          </defs>
+          <circle cx="44" cy="44" r="35" fill="none" stroke="var(--tr)" stroke-width="9"/>
+          <circle cx="44" cy="44" r="35" fill="none" stroke="url(#rg)" stroke-width="9"
+                  stroke-linecap="round" stroke-dasharray="158.3 219.9"/>
+        </svg>
+        <div class="val"><div class="n">72%</div><div class="u">нормы</div></div>
+      </div>
+      <div class="kcal-info">
+        <div class="big">1 740 ккал</div>
+        <div class="sub">из 2 410 · осталось 670</div>
+      </div>
+    </div>
+    <div class="chips">
+      <div class="chip"><div class="v">132 г</div><div class="k">белки</div></div>
+      <div class="chip"><div class="v">78 г</div><div class="k">жиры</div></div>
+      <div class="chip"><div class="v">210 г</div><div class="k">углеводы</div></div>
+    </div>
+    <div class="slot">
+      <div class="nm"><i></i>Завтрак</div>
+      <div class="kc">460 ккал</div>
+      <div class="item" style="padding:4px 0 2px 0"><span>Овсянка на воде · 250 г</span><span>220</span></div>
+      <div class="item" style="padding:2px 0 0 0"><span>Банан · 1 шт</span><span>105</span></div>
+    </div>
+    <div class="slot">
+      <div class="nm"><i></i>Обед</div>
+      <div class="kc">680 ккал</div>
+      <div class="item" style="padding:4px 0 2px 0"><span>Куриная грудка · 180 г</span><span>297</span></div>
+      <div class="item" style="padding:2px 0 0 0"><span>Гречка варёная · 150 г</span><span>198</span></div>
+    </div>
+    <button class="btn">+ Добавить еду</button>
+  </div>
+</template>
+
+<div id="root"></div>
+
+<div class="sec-h">Иконка — наброски</div>
+<div class="icons-sec">
+  <div class="icon-desc">Четыре концепта (И1–И4), каждый в нейтрале и в четырёх гаммах-фаворитах. После выбора концепта — чистовая отрисовка в выбранной гамме и все размеры (192/512, maskable, apple-touch).</div>
+  <div id="icons-root"></div>
+</div>
+
+<script>
+const G = [
+  { n:"1", name:"Матча", mood:"твой кандидат: свежий минимализм",
+    sw:["linear-gradient(185deg,#F7FAF7,#EDF6EC)","#2E9B62","#63C78F","#182420"],
+    light:{bg:"#F7FAF7",bg2:"#EDF6EC",glass:"rgba(255,255,255,.60)",tx:"#182420",mut:"#7E9386",acc:"#2E9B62",acc2:"#55BE85",accFg:"#25824F",veil:"rgba(46,155,98,.10)",tr:"rgba(24,36,32,.07)"},
+    dark:{bg:"#0E1511",bg2:"#121E17",glass:"rgba(255,255,255,.065)",tx:"#E8EFEA",mut:"#8FA396",acc:"#63C78F",acc2:"#9FE8BE",accFg:"#8FDCAC",veil:"rgba(99,199,143,.12)",tr:"rgba(255,255,255,.09)"} },
+  { n:"2", name:"Брусника", mood:"твой кандидат: свежая, чуть прохладная",
+    sw:["linear-gradient(185deg,#F8F5F6,#F6EEF1)","#B23A5B","#E27A97","#271C21"],
+    light:{bg:"#F8F5F6",bg2:"#F6EEF1",glass:"rgba(255,255,255,.60)",tx:"#271C21",mut:"#9E8D94",acc:"#B23A5B",acc2:"#D5677F",accFg:"#9C2F4D",veil:"rgba(178,58,91,.09)",tr:"rgba(39,28,33,.07)"},
+    dark:{bg:"#171114",bg2:"#1E161B",glass:"rgba(255,255,255,.065)",tx:"#F2EAED",mut:"#A9959D",acc:"#E27A97",acc2:"#F2A9BC",accFg:"#EDA2B4",veil:"rgba(226,122,151,.12)",tr:"rgba(255,255,255,.09)"} },
+  { n:"3", name:"Индиго", mood:"твой кандидат: сдержанный инструмент",
+    sw:["linear-gradient(185deg,#F6F6FA,#EFEFF8)","#4F55C9","#8B90F0","#1B1D2C"],
+    light:{bg:"#F6F6FA",bg2:"#EFEFF8",glass:"rgba(255,255,255,.60)",tx:"#1B1D2C",mut:"#8B8FA8",acc:"#4F55C9",acc2:"#7B80E0",accFg:"#4348AC",veil:"rgba(79,85,201,.09)",tr:"rgba(27,29,44,.07)"},
+    dark:{bg:"#131419",bg2:"#181A26",glass:"rgba(255,255,255,.065)",tx:"#EBECF3",mut:"#969AB0",acc:"#8B90F0",acc2:"#B4B8F7",accFg:"#A3A8F3",veil:"rgba(139,144,240,.12)",tr:"rgba(255,255,255,.09)"} },
+  { n:"4", name:"Лазурь · BHC", mood:"по твоей презентации BHC Старт: глубокая ночь + лазурь",
+    sw:["linear-gradient(185deg,#0D1B2A,#12283C)","#2793C0","#4FB3DD","#5AB776"],
+    light:{bg:"#F5F8FA",bg2:"#E8F1F7",glass:"rgba(255,255,255,.60)",tx:"#12212E",mut:"#7C93A3",acc:"#1F7FA8",acc2:"#4FB3DD",accFg:"#1B6E92",veil:"rgba(31,127,168,.10)",tr:"rgba(18,33,46,.07)"},
+    dark:{bg:"#0D1B2A",bg2:"#12283C",glass:"rgba(255,255,255,.07)",tx:"#E8F0F5",mut:"#8FA6B8",acc:"#4FB3DD",acc2:"#8AD1EE",accFg:"#6FC3E5",veil:"rgba(79,179,221,.14)",tr:"rgba(255,255,255,.09)"} },
+  { n:"5", name:"Мята", mood:"прохладная мятно-аквамариновая",
+    sw:["linear-gradient(185deg,#F4FAF9,#EAF5F2)","#1FA094","#52C9B4","#15201E"],
+    light:{bg:"#F4FAF9",bg2:"#EAF5F2",glass:"rgba(255,255,255,.60)",tx:"#15201E",mut:"#7F938F",acc:"#1FA094",acc2:"#4CC4B0",accFg:"#1A887D",veil:"rgba(31,160,148,.10)",tr:"rgba(21,32,30,.07)"},
+    dark:{bg:"#0E1716",bg2:"#122220",glass:"rgba(255,255,255,.065)",tx:"#E7F0EE",mut:"#8CA39E",acc:"#52C9B4",acc2:"#93E6D6",accFg:"#7FDCC8",veil:"rgba(82,201,180,.12)",tr:"rgba(255,255,255,.09)"} },
+  { n:"6", name:"Хвоя", mood:"глубокий тёмно-зелёный, солидный",
+    sw:["linear-gradient(185deg,#F6F9F7,#ECF3EE)","#1E6B52","#4FBE8F","#14201A"],
+    light:{bg:"#F6F9F7",bg2:"#ECF3EE",glass:"rgba(255,255,255,.60)",tx:"#14201A",mut:"#83958B",acc:"#1E6B52",acc2:"#429E77",accFg:"#195A45",veil:"rgba(30,107,82,.10)",tr:"rgba(20,32,26,.07)"},
+    dark:{bg:"#0F1713",bg2:"#132019",glass:"rgba(255,255,255,.065)",tx:"#E9F0EC",mut:"#93A69A",acc:"#4FBE8F",acc2:"#8ADFBB",accFg:"#74D3A6",veil:"rgba(79,190,143,.12)",tr:"rgba(255,255,255,.09)"} },
+  { n:"7", name:"Графит · сталь", mood:"нейтральный холодный, стальной синий",
+    sw:["linear-gradient(185deg,#F5F6F8,#ECF0F4)","#44748F","#7FA8C9","#1B2026"],
+    light:{bg:"#F5F6F8",bg2:"#ECF0F4",glass:"rgba(255,255,255,.60)",tx:"#1B2026",mut:"#8B929C",acc:"#44748F",acc2:"#6E9BBB",accFg:"#3A647B",veil:"rgba(68,116,143,.10)",tr:"rgba(27,32,38,.07)"},
+    dark:{bg:"#14171B",bg2:"#191E26",glass:"rgba(255,255,255,.065)",tx:"#E9EDF2",mut:"#969DAA",acc:"#7FA8C9",acc2:"#AECBE2",accFg:"#9ABCD9",veil:"rgba(127,168,201,.12)",tr:"rgba(255,255,255,.09)"} },
+  { n:"8", name:"Слива", mood:"приглушённый ягодно-сливовый",
+    sw:["linear-gradient(185deg,#F8F6F9,#F2ECF4)","#7D5185","#B78CC0","#221A24"],
+    light:{bg:"#F8F6F9",bg2:"#F2ECF4",glass:"rgba(255,255,255,.60)",tx:"#221A24",mut:"#978D9B",acc:"#7D5185",acc2:"#A572AF",accFg:"#6B4472",veil:"rgba(125,81,133,.09)",tr:"rgba(34,26,36,.07)"},
+    dark:{bg:"#171218",bg2:"#1D1622",glass:"rgba(255,255,255,.065)",tx:"#F0EAF2",mut:"#A195A6",acc:"#B78CC0",acc2:"#D8B6DE",accFg:"#C9A3CF",veil:"rgba(183,140,192,.12)",tr:"rgba(255,255,255,.09)"} },
+];
+
+const ICONS = [
+  { id:"И1", name:"Пай сверху", svg: `
+    <svg width="64" height="64" viewBox="0 0 120 120">
+      <defs><linearGradient id="ig1" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc2)"/>
+      </linearGradient></defs>
+      <circle cx="60" cy="60" r="54" fill="url(#ig1)"/>
+      <circle cx="60" cy="60" r="40" fill="var(--acc-tx)"/>
+      <circle cx="48" cy="52" r="9" fill="var(--acc)" opacity="0.9"/>
+      <circle cx="70" cy="62" r="9" fill="var(--acc)" opacity="0.75"/>
+      <circle cx="54" cy="74" r="9" fill="var(--acc)" opacity="0.6"/>
+    </svg>` },
+  { id:"И2", name:"Срез пая", svg: `
+    <svg width="64" height="64" viewBox="0 0 120 120">
+      <defs><linearGradient id="ig2" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc2)"/>
+      </linearGradient></defs>
+      <path d="M14,58 A46,46 0 0 0 106,58 Z" fill="url(#ig2)"/>
+      <path d="M28,58 A32,32 0 0 0 92,58 Z" fill="var(--acc-tx)"/>
+      <path d="M42,58 A18,18 0 0 0 78,58 Z" fill="var(--acc)" opacity="0.85"/>
+      <rect x="14" y="50" width="92" height="10" rx="5" fill="url(#ig2)"/>
+    </svg>` },
+  { id:"И3", name:"Монограмма D", svg: `
+    <svg width="64" height="64" viewBox="0 0 120 120">
+      <defs><linearGradient id="ig3" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc2)"/>
+      </linearGradient></defs>
+      <path d="M34,20 H52 A40,40 0 0 1 52,100 H34 Z" fill="url(#ig3)"/>
+      <circle cx="68" cy="60" r="11" fill="var(--acc)" opacity="0.55"/>
+    </svg>` },
+  { id:"И4", name:"Кольцо нормы", svg: `
+    <svg width="64" height="64" viewBox="0 0 120 120">
+      <defs><linearGradient id="ig4" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc2)"/>
+      </linearGradient></defs>
+      <circle cx="60" cy="60" r="44" fill="none" stroke="var(--tr2)" stroke-width="16"/>
+      <circle cx="60" cy="60" r="44" fill="none" stroke="url(#ig4)" stroke-width="16"
+              stroke-linecap="round" stroke-dasharray="198.6 276.5" transform="rotate(-90 60 60)"/>
+      <circle cx="60" cy="60" r="9" fill="var(--acc2)"/>
+    </svg>` },
+];
+
+const tpl = document.getElementById('tpl');
+const root = document.getElementById('root');
+const css = v => Object.entries(v).map(([k,x])=>`--${k}:${x}`).join(';');
+for (const g of G) {
+  const s = document.createElement('section'); s.className = 'scheme';
+  const head = document.createElement('div'); head.className='scheme-head';
+  head.innerHTML = `<span class="num">${g.n}</span><h2>${g.name}</h2><span class="mood">${g.mood}</span>`;
+  const sw = document.createElement('div'); sw.className='swatches';
+  const labels = ['фон (градиент)','акцент','акцент светл.','текст'];
+  sw.innerHTML = g.sw.map((c,i)=>`<div class="sw"><div class="c" style="background:${c}"></div><div class="l">${labels[i]}</div></div>`).join('');
+  const pair = document.createElement('div'); pair.className='pair';
+  for (const [mode,vars] of [['светлая тема',g.light],['тёмная тема',g.dark]]) {
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    // уникальные id градиентов: иначе все кольца возьмут градиент первого клона
+    node.querySelectorAll('linearGradient[id]').forEach(lg => {
+      const nid = lg.id + '-' + Math.random().toString(36).slice(2, 7);
+      node.querySelectorAll(`[stroke="url(#${lg.id})"]`).forEach(el => el.setAttribute('stroke', `url(#${nid})`));
+      lg.id = nid;
+    });
+    node.style.cssText = css(vars);
+    node.querySelector('.mode').textContent = mode;
+    pair.appendChild(node);
+  }
+  s.append(head, sw, pair); root.appendChild(s);
+}
+
+const favs = [G[0], G[1], G[2], G[3]];
+const iroot = document.getElementById('icons-root');
+for (const ic of ICONS) {
+  const sec = document.createElement('div'); sec.className = 'icons-sec';
+  sec.insertAdjacentHTML('beforeend', `<div class="scheme-head"><span class="num">${ic.id}</span><h2>${ic.name}</h2></div>`);
+  const row = document.createElement('div'); row.className = 'icon-row';
+  const variants = [
+    { name: 'нейтраль', vars: { bg:'#F4F5F7', acc:'#33363D', acc2:'#5A5E66', accTx:'#F4F5F7', tr2:'#DFE1E6' } },
+    ...favs.map(g => ({ name: g.name, vars: { bg: g.light.bg, acc: g.light.acc, acc2: g.light.acc2, accTx: '#FFFFFF', tr2: g.light.tr } })),
+  ];
+  for (const v of variants) {
+    const card = document.createElement('div'); card.className = 'icon-card';
+    card.style.cssText = css(v.vars);
+    const uid = Math.random().toString(36).slice(2, 7);
+    const svg = ic.svg.replace(/ig(\d)/g, `ig$1${uid}`);
+    card.innerHTML = svg + `<div class="cap">${v.name}</div>`;
+    row.appendChild(card);
+  }
+  sec.appendChild(row); iroot.appendChild(sec);
+}
+</script>
+</body>
+</html>
