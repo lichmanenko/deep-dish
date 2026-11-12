@@ -164,7 +164,11 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
                   {q.trim() && <button className="dd-action strong" onClick={() => setCreatingFood(true)}>＋ {q.trim()}</button>}
                 </div>
               )}
-              {[...searchRest].sort((a, b) => {
+              {/* v0.7.18 (В., 12.11: «Кофе Кортадо» не находился поиском «Кортадо»):
+                  недавние совпадения ВЫЧИТАЛИСЬ из searchRest, но не рендерились нигде —
+                  частые продукты исчезали из выдачи. Теперь недавние совпадения — первыми
+                  строками «Найдено» (канон: недавние сверху). */}
+              {[...recentMatches, ...searchRest].sort((a, b) => {
                 const rank = (x: CatalogItem) => recentSet.has(`${x.kind}:${x.id}`) ? 0 : 1;
                 return rank(a) - rank(b);
               }).map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)}  onManage={setManaging} onWarn={() => setExplain('warn')} />)}
