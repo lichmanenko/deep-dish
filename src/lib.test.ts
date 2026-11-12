@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { kbjuSuspicious, normE, guessCategory, HIDDEN_CATS, matchTokens } from './lib';
 import { windowsFromEntries } from './banner';
-import { dedupeKey, effectivePace, forecastPct } from './store';
+import { effectivePace, forecastPct } from './store';
 import { pickFact, markFactClosed } from './facts';
 import { lastSegmentStart } from './achievements';
 
@@ -269,21 +269,7 @@ describe('сегмент непрерывности достижений (раз
   });
 });
 
-
-describe('дедуп каталога (0.7.10)', () => {
-  it('EAN главнее имени', () => {
-    expect(dedupeKey({ barcode: '4600000000000', name: 'Кекс чайный' }))
-      .toBe(dedupeKey({ barcode: '4600000000000', name: 'Совсем другое' }));
-  });
-  it('имя+бренд без EAN — нормализованы', () => {
-    expect(dedupeKey({ name: 'Кекс Чайный', brand: 'Боровинка' }))
-      .toBe(dedupeKey({ name: 'кекс чайный', brand: 'боровинка' }));
-  });
-  it('разные бренды — разные ключи', () => {
-    expect(dedupeKey({ name: 'Молоко', brand: 'Простоквашино' }))
-      .not.toBe(dedupeKey({ name: 'Молоко', brand: 'Домик в деревне' }));
-  });
-});
+// дедуп каталога удалён v0.7.17 (аудит tombstone-цикла) — тесты вместе с ним
 
 describe('цель в килограммах (0.7.11)', () => {
   const pr = (over: Partial<import('./db').Profile>) => ({ goal: 'lose', paceKgPerWeek: 0.5, ...over }) as import('./db').Profile;

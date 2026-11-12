@@ -70,15 +70,28 @@ export async function runSync(force = false): Promise<SyncResult> {
   const localPending = above(await db.entries.toArray())
     + above(await db.foods.toArray())
     + above(await db.weightLogs.toArray());
+  // v0.7.17 (аудит 12.11): усечение пуша лимитом 2000 тихо теряло хвост — lastPush прыгал на
+  // serverTime, и неотправленные строки навсегда выпадали из окна. Для таблиц, упёршихся в
+  // лимит, запоминаем максимум фактически отправленного updatedAt — он и станет полом.
+  const hitLimit = new Map<Kind, number>();
   for (const k of Object.keys(TABLES) as Kind[]) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (TABLES[k] as any)
       .filter((x: { updatedAt: number }) => x.updatedAt > pushFloor)
       .limit(2000).toArray() as Array<Record<string, unknown>>;
+    if (rows.length >= 2000) {
+      hitLimit.set(k, rows.reduce((m: number, r) => Math.max(m, Number(r.updatedAt) || 0), 0));
+    }
     for (const r of rows) {
       const body = { ...r };
       if (PRIVATE_KINDS.has(k)) body.userId = st.userId;
       if (k === 'achievements' && (body as { userId?: string }).userId === 'local') body.userId = st.userId; // автор = это устройство
+      // v0.7.17 (аудит tombstone-цикла): tombstone продукта уезжает на сервер ТОЛЬКО с
+      // провенансом delBy='user' (его ставит кнопка удаления в UI). Эхо дедупа v0.7.10–
+      // 0.7.14 (без delBy) не отправляется вовсе и вдобавок воскрешается сервером (0.4.6) —
+      // цикл «удалил-вытянул-удалил» разомкнут с двух концов. Записи/рецепты: удаления
+      // легитимны всегда, LWW как был.
+      if (k === 'foods' && body.deletedAt && body.delBy !== 'user') continue;
       changes.push({ kind: k, body });
     }
   }
@@ -135,7 +148,11 @@ export async function runSync(force = false): Promise<SyncResult> {
   const clockAhead = r.serverTime - nowLocal > 5 * 60 * 1000;
   let since = (typeof r.maxUpdated === 'number' && r.changes?.length) ? r.maxUpdated : r.serverTime;
   if (st.since > r.serverTime) since = 0;          // серверное время поехало назад — полная перезагрузка
-  const lastPush = clockAhead ? Math.min(st.lastPush, nowLocal) : Math.max(st.lastPush, r.serverTime);
+  // v0.7.17: при усечении пуша lastPush = максимум фактически отправленного (иначе хвост
+  // терялся навсегда); без усечения — серверные часы, как было
+  const truncFloor = [...hitLimit.values()].filter(v => v > 0);
+  const lastPush = clockAhead ? Math.min(st.lastPush, nowLocal)
+    : truncFloor.length ? Math.min(...truncFloor) : Math.max(st.lastPush, r.serverTime);
   if (clockAhead || since === 0) {
     (await import('./store')).track('clock_skew', { ahead: clockAhead, serverMinusLocal: r.serverTime - nowLocal });
   }
@@ -144,6 +161,7 @@ export async function runSync(force = false): Promise<SyncResult> {
     force, sent: changes.length, appliedByServer: r.applied ?? 0, rejectedByServer: r.rejected ?? 0,
     pulled, sinceBefore: st.since, sinceAfter: since, lastPushBefore: st.lastPush, lastPushAfter: lastPush,
     localPendingBeforeSync: localPending, skewMs: r.serverTime - nowLocal,
+    truncatedTables: hitLimit.size, // v0.7.17: >0 — пуш обрезан лимитом, хвост доедет следующим
   });
   saveSync({ ...st, since, lastPush, lastOk: nowLocal });
   return { ok: true, pushed: r.applied ?? changes.length, pulled };

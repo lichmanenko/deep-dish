@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url))); // deep-dish/
 const PW = createRequire(import.meta.url)(path.join(ROOT, 'tmp', 'ui-test', 'node_modules', 'playwright-core'));
 
 async function mkClient(name) {
@@ -119,5 +119,69 @@ await register(B.page, 'e2e-B', adminTok);
 await manualSync(B.page, 'B');
 await searchFood(B.page, 'B', 'Кекс столичный');
 
+// ── регрессия v0.7.17/0.4.6: tombstone-цикл продуктов ──────────────────────
+// 1) «Эхо дедупа»: старый клиент пушит tombstone БЕЗ провенанса delBy — сервер
+//    обязан воскресить продукт, а не удалить его (аудит 12.11).
+const aTok = await A.page.evaluate(() => JSON.parse(localStorage.getItem('dd-sync') || '{}').token);
+const syncPost = (token, payload) => fetch(SERVER + '/sync', {
+  method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+  body: JSON.stringify(payload),
+}).then(r => r.json());
+const dump = await syncPost(aTok, { since: 0, changes: [], events: [], client_now: Date.now() });
+const keks = dump.changes.filter(c => c.kind === 'foods' && c.body.name === 'Кекс столичный Е2Е');
+if (keks.length !== 1) throw new Error('кекс не найден в выдаче сервера: ' + keks.length);
+const now = Date.now();
+const echo = await syncPost(aTok, {
+  since: dump.serverTime, client_now: now,
+  changes: [{ kind: 'foods', body: { ...keks[0].body, deletedAt: now, updatedAt: now } }], // БЕЗ delBy — как дедуп
+  events: [],
+});
+console.log('[эхо] push без провенанса: applied=' + echo.applied + ' rejected=' + echo.rejected);
+const dump2 = await syncPost(aTok, { since: 0, changes: [], events: [], client_now: now });
+const keks2 = dump2.changes.filter(c => c.kind === 'foods' && c.body.name === 'Кекс столичный Е2Е');
+const aliveAfterEcho = keks2.length === 1 && !keks2[0].body.deletedAt;
+console.log('[эхо] продукт на сервере после tombstone-пуша:', aliveAfterEcho ? 'ЖИВ ✓ (воскрешён)' : 'УДАЛЁН ✗ ЦИКЛ ВЕРНУЛСЯ');
+
+// 2) осознанное удаление в UI (delBy='user') — должно расползтись семье
+await page_deleteFood(A.page, 'Кекс столичный');
+await manualSync(A.page, 'A');
+await manualSync(B.page, 'B'); // B тянет tombstone (v0.4.6: tombstone каталога отдаётся всем)
+const gone = !(await searchFood(B.page, 'B', 'Кекс столичный'));
+console.log('[user-удаление] у B продукт:', gone ? 'исчез ✓ (провенанс работает)' : 'ОСТАЛСЯ ✗');
+
 await A.ctx.close(); await B.ctx.close();
-console.log('E2E SYNC DONE');
+const FAIL = !aliveAfterEcho || !gone;
+console.log(FAIL ? 'E2E SYNC: ЕСТЬ ПРОБЛЕМЫ' : 'E2E SYNC DONE');
+process.exitCode = FAIL ? 1 : 0;
+
+/** Открыть карточку продукта из поиска и удалить (UI-путь, ставит delBy='user'). */
+async function page_deleteFood(page, q) {
+  await page.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Сегодня' && x.closest('nav'))?.click(); });
+  await page.waitForTimeout(700);
+  await page.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.trim() === '＋ еда')?.click(); });
+  await page.waitForTimeout(1000);
+  await page.evaluate(qq => {
+    const inp = [...document.querySelectorAll('.dd-input')].find(i => i.placeholder.includes('Поиск'));
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    set.call(inp, qq); inp.dispatchEvent(new Event('input', { bubbles: true }));
+  }, q);
+  await page.waitForTimeout(1400);
+  await page.evaluate(q2 => {
+    const row = [...document.querySelectorAll('.dd-item')].find(x => x.textContent.toLowerCase().includes(q2.toLowerCase()));
+    row?.querySelector('.dd-more')?.click(); // ⋯ = «Изменить или удалить» (клик по строке открывает ввод порции)
+  }, q);
+  await page.waitForTimeout(900);
+  const step1 = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Удалить продукт');
+    if (b) { b.click(); return true; } return false;
+  });
+  await page.waitForTimeout(600);
+  const step2 = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Удалить' && (x.closest('.dd-sheet') || x.closest('[role="dialog"]')));
+    if (b) { b.click(); return true; } return false;
+  });
+  await page.waitForTimeout(700);
+  await page.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.trim() === '‹')?.click(); });
+  await page.waitForTimeout(500);
+  console.log(`[A] UI-удаление: кнопки ${step1 ? '«Удалить продукт» ✓' : 'НЕ НАЙДЕНА ✗'} / ${step2 ? 'подтверждение ✓' : 'подтверждение НЕ НАЙДЕНО ✗'}`);
+}

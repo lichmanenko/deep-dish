@@ -69,8 +69,17 @@ async function searchOffDirect(q: string): Promise<OffHit[]> {
 
 /** Сохранить находку в каталог (КБЖУ на 100 г, свой продукт — уедет семье при синке).
  *  Возвращает сам продукт: карточка записи открывается из него напрямую,
- *  минуя live-выдачу каталога (успевает раньше её обновления — дубль-сохранения, след жены 18.10). */
+ *  минуя live-выдачу каталога (успевает раньше её обновления — дубль-сохранения, след жены 18.10).
+ *  v0.7.17 (аудит 12.11): повторное сохранение той же находки НЕ плодит дубль — ищем
+ *  живой продукт с теми же именем и брендом (это и был корень «Кортадо (дубль)»,
+ *  кормивший дедуп v0.7.10, чьи tombstone потом кочевали по серверу). */
 export async function saveOffHit(h: OffHit): Promise<Food> {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const twin = await db.foods
+    .filter(f => !f.deletedAt && !f.hidden
+      && norm(f.name) === norm(h.name) && norm(f.brand ?? '') === norm(h.brand ?? ''))
+    .first();
+  if (twin) { track('off_saved', { reused: 1 }); return twin; }
   const food: Food = {
     id: newId(), name: h.name, brand: h.brand,
     category: guessCategory(h.name) ?? 'Прочее',

@@ -66,7 +66,7 @@ PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'p
 FAMILY_KINDS = {'achievements'}  # v0.7.6: публичные записи семьи (достижения — факт известен всем)
 ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS | FAMILY_KINDS
 
-app = FastAPI(title='Deep Dish sync', version='0.4.5')
+app = FastAPI(title='Deep Dish sync', version='0.4.6')
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
@@ -665,8 +665,29 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
                 rejected += 1
                 continue
             deleted = 1 if body.get('deletedAt') else 0
+            # v0.4.6 (аудит tombstone-цикла, В. 12.11): tombstone продукта принимается только
+            # с провенансом delBy='user' (осознанное удаление в UI, клиент 0.7.17+). Всё
+            # остальное (эхо дедупа v0.7.10–0.7.14, старые клиенты) — игнорируем и ВОСКРЕШАЕМ
+            # запись: updated = серверное «сейчас», новее любого локального tombstone → pull
+            # раздаёт живую версию всем, цикл «удалил-вытянул-удалил» разомкнут с двух концов.
+            # Живой продукт поверх удалённого на сервере — тоже воскресает. Записи/рецепты:
+            # их удаления легитимны всегда, LWW как был.
+            resurrect = False
+            if ch.kind == 'foods' and deleted and body.get('delBy') != 'user':
+                body['deletedAt'] = None
+                body['delBy'] = None
+                body['updatedAt'] = server_now
+                deleted = 0
+                resurrect = True
+            elif ch.kind == 'foods' and not deleted:
+                cur_del = c.execute('SELECT deleted FROM items WHERE kind = ? AND id = ?',
+                                    (ch.kind, cid)).fetchone()
+                if cur_del and cur_del['deleted']:
+                    resurrect = True  # живая версия приехала поверх удалённой — вернуть в каталог
+            if resurrect:
+                updated = server_now
             cur = c.execute('SELECT updated FROM items WHERE kind = ? AND id = ?', (ch.kind, cid)).fetchone()
-            if cur and cur['updated'] >= updated:
+            if cur and cur['updated'] >= updated and not resurrect:
                 continue  # сервер новее или тот же — клиент получит серверную версию
             c.execute('''INSERT INTO items (kind, id, owner, updated, deleted, body, applied)
                          VALUES (?,?,?,?,?,?,?)
@@ -695,10 +716,17 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
             except Exception:
                 pass
 
-        # 3) отдать изменения новее since: личное — только своё, каталог — живой общий
+        # 3) отдать изменения новее since: личное — только своё, каталог — общий.
+        # v0.4.6 (аудит 12.11): tombstone каталога (foods/recipes) отдаётся ВСЕМ — раньше
+        # `deleted = 0` прятал его от семьи, и осознанные удаления (delBy='user') никогда
+        # не расходились: у других навсегда оставалась живая копия. Эхо-дедупа тут уже нет —
+        # сервер воскрешает tombstone без провенанса при приёме (см. выше). Ачивки — как было:
+        # их tombstone адресные (сброс сегмента), в семейную выдачу не идут.
         rows = c.execute('''SELECT kind, body, updated, deleted, applied FROM items
                             WHERE applied > ? AND kind != 'offcache'
-                              AND (owner = ? OR (kind IN ('foods','recipes','achievements') AND deleted = 0))
+                              AND (owner = ?
+                                   OR (kind IN ('foods','recipes'))
+                                   OR (kind = 'achievements' AND deleted = 0))
                             ORDER BY applied LIMIT 5000''',
                          (payload.since, uid)).fetchall()
         out: list[dict[str, Any]] = []

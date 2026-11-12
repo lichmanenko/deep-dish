@@ -4,3 +4,4 @@ tmp/
 *.local
 .DS_Store
 backend/data
+__pycache__/
