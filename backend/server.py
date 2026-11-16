@@ -10,54 +10,41 @@ import sqlite3
 import time
 import urllib.parse
 import urllib.request
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Any, Iterator
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlite_backups import BackupManager, configured_paths, configuration
 from pydantic import BaseModel
 
-DB_PATH = os.environ.get('DD_DB', os.path.join(os.path.dirname(__file__), 'data', 'deepdish.db'))
+DB_PATH = os.path.abspath(os.environ.get('DD_DB', os.path.join(os.path.dirname(__file__), 'data', 'deepdish.db')))
 TOMBSTONE_TTL_DAYS = 90
 
 # v0.7.4: структурные логи в файл с ротацией (диагностика NAS вслепую стала невозможной)
-os.makedirs(os.path.join(os.path.dirname(__file__), 'data'), exist_ok=True)
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 log = logging.getLogger('deepdish')
 log.setLevel(logging.INFO)
 _log_handler = logging.handlers.RotatingFileHandler(
-    os.path.join(os.path.dirname(__file__), 'data', 'server.log'),
+    os.path.join(os.path.dirname(DB_PATH), 'server.log'),
     maxBytes=1_000_000, backupCount=3, encoding='utf-8')
 _log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
 log.addHandler(_log_handler)
 
-# v0.7.4: авто-бэкап при синках — VACUUM INTO-снапшот без WAL-хвостов, ротация 30 копий
-BACKUP_DIR = os.path.join(os.path.dirname(__file__), 'data', 'backups')
-BACKUP_KEEP = 30
-BACKUP_MIN_INTERVAL_S = 6 * 3600  # не чаще раза в 6 часов
+# Snapshots are independent of incoming sync requests.
+_backup_dir, _backup_staging = configured_paths()
+backup_manager = BackupManager(DB_PATH, _backup_dir, _backup_staging,
+                               logger=log, **configuration())
 
 
-def maybe_backup() -> None:
-    marker = os.path.join(BACKUP_DIR, '.last')
-    now = time.time()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    backup_manager.start()
     try:
-        if os.path.exists(marker) and now - os.path.getmtime(marker) < BACKUP_MIN_INTERVAL_S:
-            return
-        os.makedirs(BACKUP_DIR, exist_ok=True)
-        stamp = time.strftime('%Y%m%d-%H%M%S')
-        dest = os.path.join(BACKUP_DIR, f'deepdish-{stamp}.db')
-        conn = sqlite3.connect(DB_PATH)
-        try:
-            conn.execute('VACUUM INTO ?', (dest,))
-        finally:
-            conn.close()
-        open(marker, 'w').close()
-        os.utime(marker)
-        old = sorted(f for f in os.listdir(BACKUP_DIR) if f.startswith('deepdish-') and f.endswith('.db'))
-        for f in old[:-BACKUP_KEEP]:
-            os.remove(os.path.join(BACKUP_DIR, f))
-        log.info('backup saved: %s (total %d)', dest, min(len(old), BACKUP_KEEP))
-    except Exception as e:  # бэкап не должен ронять синк
-        log.warning('backup failed: %s', e)
+        yield
+    finally:
+        backup_manager.stop()
 
 
 # kinds: общий каталог vs личные данные
@@ -66,7 +53,7 @@ PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'p
 FAMILY_KINDS = {'achievements'}  # v0.7.6: публичные записи семьи (достижения — факт известен всем)
 ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS | FAMILY_KINDS
 
-app = FastAPI(title='Deep Dish sync', version='0.4.6')
+app = FastAPI(title='Deep Dish sync', version='0.4.7', lifespan=lifespan)
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
@@ -168,7 +155,13 @@ class SyncIn(BaseModel):
 
 @app.get('/healthz')
 def healthz() -> dict[str, Any]:
-    return {'ok': True, 'serverTime': now_ms()}
+    return {'ok': True, 'serverTime': now_ms(), 'backup': backup_manager.health()}
+
+
+@app.get('/backup-healthz')
+def backup_healthz():
+    health = backup_manager.health()
+    return JSONResponse(health, status_code=200 if health['healthy'] else 503)
 
 
 @app.post('/register')
@@ -749,5 +742,4 @@ def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
     skew_ms = (payload.client_now - server_now) if payload.client_now else 0
     log.info('sync user=%s nick=%s since=%d applied=%d rejected=%d out=%d events=%d skew_ms=%d',
              uid, user['nickname'], payload.since, applied, rejected, len(out), len(payload.events), skew_ms)
-    maybe_backup()
     return {'changes': out, 'serverTime': server_now, 'maxUpdated': max_updated, 'applied': applied, 'rejected': rejected}
