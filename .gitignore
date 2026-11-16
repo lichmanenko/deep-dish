@@ -5,3 +5,5 @@ tmp/
 .DS_Store
 backend/data
 __pycache__/
+
+backend/.backup-staging/
