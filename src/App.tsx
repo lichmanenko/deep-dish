@@ -68,10 +68,9 @@ export default function App() {
     return () => { alive = false; clearInterval(t); };
   }, [onboarding]);
 
-  // Автоскрытие таб-бара: скролл вниз или 4 с бездействия; возврат — тап по нижней зоне или скролл вверх
+  // Автоскрытие при скролле вниз. Панель возвращается при скролле вверх, по фокусу или тапу внизу.
   const [barHidden, setBarHidden] = useState(false);
   const lastY = useRef(0);
-  const idleTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY;
@@ -79,19 +78,8 @@ export default function App() {
       else if (y < lastY.current - 6) setBarHidden(false);
       lastY.current = y;
     };
-    const onActivity = () => {
-      setBarHidden(false);
-      window.clearTimeout(idleTimer.current);
-      idleTimer.current = window.setTimeout(() => setBarHidden(true), 4000);
-    };
     window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('pointerdown', onActivity);
-    onActivity();
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('pointerdown', onActivity);
-      window.clearTimeout(idleTimer.current);
-    };
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   // Кросс-фейд фоновых радиальных пресетов при смене экрана
@@ -154,7 +142,7 @@ export default function App() {
 
       {!addOpen && barHidden && <div className="dd-tabzone" onClick={() => setBarHidden(false)} />}
       {!addOpen && (
-        <nav className={`dd-tabbar${barHidden ? ' hidden' : ''}`}>
+        <nav className={`dd-tabbar${barHidden ? ' hidden' : ''}`} aria-label="Основная навигация" onFocus={() => setBarHidden(false)}>
           <TabBtn on={screen === 'today'} icon={<Icons.Ring />} label="Сегодня"
             onClick={() => { setTab('today'); setDate(todayISO()); /* повторный тап — к текущей дате */ }} />
           <TabBtn on={screen === 'profile'} icon={<Icons.Person />} label="Профиль" onClick={() => setTab('profile')} />
@@ -168,8 +156,8 @@ export default function App() {
 
 function TabBtn({ on, icon, label, onClick }: { on: boolean; icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
-    <button className={`dd-tab${on ? ' on' : ''}`} onClick={onClick}>
-      <span className="ti">{icon}</span>{label}
+    <button type="button" className={`dd-tab${on ? ' on' : ''}`} aria-current={on ? 'page' : undefined} onClick={onClick}>
+      <span className="ti" aria-hidden="true">{icon}</span>{label}
     </button>
   );
 }

@@ -36,6 +36,35 @@ async function apiAddress() {
 
 const button = (page, name) => page.getByRole('button', { name, exact: true });
 
+async function tabTo(page, control) {
+  await control.waitFor();
+  for (let attempt = 0; attempt < 24; attempt++) {
+    if (await control.evaluate(element => document.activeElement === element)) return;
+    await page.keyboard.press('Tab');
+  }
+  throw new Error(`Keyboard navigation could not reach ${control}`);
+}
+
+async function checkNavigation(page) {
+  const navigation = page.getByRole('navigation', { name: 'Основная навигация' });
+  await navigation.waitFor();
+  assert.equal(await button(navigation, 'Сегодня').getAttribute('aria-current'), 'page');
+  await delay(4_300);
+  assert.equal(await navigation.evaluate(element => element.classList.contains('hidden')), false);
+  assert.equal(await page.getByRole('dialog', { name: 'Факт о дневнике' }).count(), 0);
+  await page.setViewportSize({ width: 320, height: 660 });
+  await button(navigation, 'Настройки').click();
+  await button(page, 'очень крупный').click();
+  await page.getByRole('button', { name: /тёмная/ }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
+  await page.getByRole('heading', { name: 'Настройки', exact: true }).click();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.locator('nav.dd-tabbar.hidden').waitFor({ state: 'attached' });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.locator('nav.dd-tabbar:not(.hidden)').waitFor({ state: 'attached' });
+  await button(navigation, 'Сегодня').click();
+}
+
 async function openFamily(page) {
   const family = button(page.getByRole('navigation'), 'Семья');
   await family.focus();
@@ -101,11 +130,6 @@ try {
   browser = await chromium.launch({ channel: process.env.DD_BROWSER_CHANNEL || undefined });
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true,
     hasTouch: true, locale: 'ru-RU', timezoneId: 'Europe/Moscow' });
-  await context.addInitScript(frontendOrigin => {
-    if (location.origin === frontendOrigin && !localStorage.getItem('dd-settings')) {
-      localStorage.setItem('dd-settings', JSON.stringify({ factsOn: false }));
-    }
-  }, new URL(url).origin);
   await context.route(/^https:\/\//, route => route.abort());
   const errors = [];
   context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
@@ -114,6 +138,7 @@ try {
   await page.goto(url);
   await button(page, 'Пропустить').click();
   await button(page, '＋ еда').waitFor();
+  await checkNavigation(page);
   await checkExternalSearch(page, context);
   await openFamily(page);
   await page.getByRole('textbox', { name: 'Адрес сервера' }).fill(origin);
@@ -135,14 +160,47 @@ try {
   await page.goto(url);
   assert.equal(await page.evaluate(() => navigator.onLine), false);
   await button(page, '＋ еда').click();
-  await page.getByPlaceholder(/Поиск: название/).fill('твор');
-  await page.getByText('Творог 5%', { exact: true }).click();
-  const editor = page.getByRole('dialog');
-  await editor.getByRole('textbox', { name: 'Вес порции, г' }).fill('125,5');
-  await button(editor, 'Сохранить').click();
+  await page.getByRole('textbox', { name: 'Поиск продуктов' }).fill('твор');
+  const product = page.getByRole('button', { name: /^Творог 5%/ });
+  await tabTo(page, product);
+  await page.keyboard.press('Enter');
+  const addEditor = page.getByRole('dialog');
+  const initialWeight = addEditor.getByRole('textbox', { name: 'Вес порции, г' });
+  await tabTo(page, initialWeight);
+  await initialWeight.fill('125,5');
+  await tabTo(page, button(addEditor, 'Сохранить'));
+  await page.keyboard.press('Enter');
+  await addEditor.waitFor({ state: 'hidden' });
   await button(page, 'Назад').click();
+  const fact = page.getByRole('dialog', { name: 'Факт о дневнике' });
+  await fact.waitFor();
+  await page.keyboard.press('Escape');
+  await fact.waitFor({ state: 'hidden' });
   await page.reload();
-  await page.getByText(/Творог 5% ·/).waitFor();
+
+  const collapse = page.getByRole('button', { name: /^Свернуть записи/ });
+  await tabTo(page, collapse);
+  await page.keyboard.press('Space');
+  const expand = page.getByRole('button', { name: /^Развернуть записи/ });
+  assert.equal(await expand.evaluate(element => document.activeElement === element), true);
+  await page.keyboard.press('Enter');
+  const entry = page.getByRole('button', { name: /Творог 5% ·/ });
+  await tabTo(page, entry);
+  await page.keyboard.press('Enter');
+  const editor = page.getByRole('dialog', { name: 'Запись', exact: true });
+  await editor.waitFor();
+  await page.keyboard.press('Escape');
+  await editor.waitFor({ state: 'hidden' });
+  assert.equal(await entry.evaluate(element => document.activeElement === element), true);
+  await page.keyboard.press('Enter');
+  const editWeight = editor.getByRole('textbox', { name: 'Вес, г' });
+  await tabTo(page, editWeight);
+  assert.equal(await editWeight.inputValue(), '125,5');
+  await editWeight.fill('150,25');
+  await tabTo(page, button(editor, 'Сохранить'));
+  await page.keyboard.press('Enter');
+  await editor.waitFor({ state: 'hidden' });
+  assert.equal(await entry.evaluate(element => document.activeElement === element), true);
   assert.equal((await readDiary(origin, token)).length, 0, 'offline entry already reached the server');
 
   await context.setOffline(false);
@@ -153,13 +211,13 @@ try {
     await delay(400);
   }
   assert.equal(diary.length, 1, 'reconnecting should deliver exactly one entry');
-  assert.equal(diary[0].body.grams, 125.5, 'sync must preserve the decimal quantity');
+  assert.equal(diary[0].body.grams, 150.25, 'sync must preserve the edited decimal quantity');
   await openFamily(page);
   await button(page, 'Синхронизировать').click();
   await page.getByText('Синхронизация прошла.', { exact: true }).waitFor();
   assert.deepEqual((await readDiary(origin, token)).map(change => change.body.id), [diary[0].body.id]);
   assert.deepEqual(errors, [], 'uncaught browser errors');
-  console.log('OK: current search results, service failure feedback, offline entry and sync without duplicate');
+  console.log('OK: navigation, first entry, current search results, offline keyboard edit and sync without duplicate');
 } finally {
   await browser?.close();
   if (frontend) await new Promise(resolve => frontend.httpServer.close(resolve));

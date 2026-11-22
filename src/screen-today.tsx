@@ -21,7 +21,7 @@ function MacroChip({ v, goal, k, compact, onOverTap }: { v: number; goal?: numbe
 // Экран «Сегодня»: кольцо нормы, чипы БЖУ, слоты с записями, навигация по датам
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type Entry, type Slot, type SlotMark } from './db';
+import { db, LOCAL_USER, type Entry, type Slot, type SlotMark } from './db';
 import type { DayNorma } from './db';
 import { getEntries, getProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, getSlotMarks, toggleSlotMark, type GoalProgress } from './store';
 import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt, loadSettings, parseQuantity } from './lib';
@@ -68,22 +68,32 @@ export function TodayScreen({ date, setDate, onAdd, onOpenProfile, showTime }: {
   const familyAch = useLiveQuery(() => db.achievements.toArray(), [], [] as Array<{ id: string; userId: string; code: string; nick?: string; unlockedAt: number }>);
 
   useEffect(() => {
-    // прямой ответ про сброс достижений (пауза 90+ дней, В., 25.10)
-    if (localStorage.getItem('dd-ach-reset') === '1') {
-      localStorage.removeItem('dd-ach-reset');
-      setFact({ f: { id: 'ach-reset', emoji: '🔄', cls: 1, rarity: 0,
-        text: 'Пауза была больше 90 дней — достижения начаты заново. Награды вернутся быстро: большинство помнит свой ритм.',
-        src: '' }, at: Date.now() });
-      return;
-    }
-    // детектор при входе на день; свежие ачивки могут пробить факт-график (класс 1–2)
-    detectAchievements().then(codes => {
+    let current = true;
+    async function checkFact() {
+      const firstEntry = await db.entries.where('userId').equals(LOCAL_USER).filter(e => !e.deletedAt).first();
+      if (!current) return;
+      if (firstEntry && localStorage.getItem('dd-ach-reset') === '1') {
+        localStorage.removeItem('dd-ach-reset');
+        setFact({ f: { id: 'ach-reset', emoji: '🔄', cls: 1, rarity: 0,
+          text: 'Пауза была больше 90 дней — достижения начаты заново. Награды вернутся быстро: большинство помнит свой ритм.',
+          src: '' }, at: Date.now() });
+        return;
+      }
+      const codes = await detectAchievements();
+      if (!current || !firstEntry) return;
       const map: Record<string, string> = { w5: 'w5', gap_return: 'gap_return', streak3: 'streak3', streak7: 'streak7', streak30: 'streak30' };
       const ms = codes.map(c => map[c]).find(Boolean);
       const f = pickFact({ todayISO: date, milestoneToday: ms, gapReturnToday: codes.includes('gap_return') }, { factsOn: loadSettings().factsOn });
       if (f) setFact({ f, at: Date.now() });
-    }).catch(() => { /* тихо */ });
+    }
+    void checkFact().catch(() => { /* тихо */ });
+    return () => { current = false; };
   }, [date]);
+
+  function closeFact() {
+    if (fact) markFactClosed(fact.f.id, fact.at, false);
+    setFact(null);
+  }
 
   useEffect(() => {
     // тост чужих достижений: новые с последнего просмотра (синк подтянет — useLiveQuery оживает сам)
@@ -200,19 +210,19 @@ export function TodayScreen({ date, setDate, onAdd, onOpenProfile, showTime }: {
           onAdd={onAdd} onOpenInfo={setSlotInfo} onEditEntry={setEditEntry} />; })}
       </Slide>
 
-      {fact && (
-        <div className="dd-fact-bg" onClick={() => { markFactClosed(fact.f.id, fact.at, false); setFact(null); }}>
-          <div className="dd-fact-card" onClick={e => e.stopPropagation()}>
-            <div className="dd-fact-emoji">{fact.f.emoji}</div>
+      <Modal open={!!fact} onClose={closeFact} label="Факт о дневнике">
+        {fact && (
+          <div className="text-center">
+            <div className="dd-fact-emoji" aria-hidden="true">{fact.f.emoji}</div>
             <div className="dd-fact-text">{fact.f.text}</div>
             {fact.f.src && (
               <a className="dd-fact-src" href={fact.f.src} target="_blank" rel="noreferrer"
                 onClick={() => markFactClosed(fact.f.id, fact.at, true)}>Источник →</a>
             )}
-            <button className="dd-action strong" onClick={() => { markFactClosed(fact.f.id, fact.at, false); setFact(null); }}>Понятно</button>
+            <button className="dd-action strong" onClick={closeFact}>Понятно</button>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {achToast && (
         <div className="dd-ach-toast">
@@ -413,29 +423,29 @@ function SlotCard({ slot, entries, marks, date, showTime, onAdd, onOpenInfo, onE
   const plural = (n: number) => n === 1 ? 'запись' : n < 5 ? 'записи' : 'записей';
   return (
     <div className="dd-card px-4 pt-4 pb-3 mb-2.5" onClick={() => !hasEntries && onAdd(slot)}>
-      {collapsed ? (
-        /* свёрнутый приём: любой тап разворачивает (механика В.) */
-        <div className="flex justify-between items-baseline cursor-pointer" onClick={toggle}>
+      <div className={cx('flex justify-between items-baseline gap-2', collapsed ? 'cursor-pointer' : 'mb-1')} onClick={hasEntries ? toggle : undefined}>
+        {collapsed ? (
           <span className="text-[0.9375rem] font-semibold flex items-baseline gap-2">
             <span>{slot.emoji}</span>{slot.name}
           </span>
-          <span className="dd-num text-xs" style={{ color: 'var(--mut)' }}>
-            {entries.length} {plural(entries.length)} · {fmt(totalGrams)} г · <b style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</b>
-          </span>
-        </div>
-      ) : (
-      <div className="flex justify-between items-baseline mb-1 cursor-pointer" onClick={toggle}>
-        <button className="text-[0.9375rem] font-semibold flex items-baseline gap-2 dd-slot-link"
-          onClick={e => { e.stopPropagation(); onOpenInfo(slot); }}>
-          <span>{slot.emoji}</span>{slot.name}
-        </button>
-        <div className="text-xs dd-num flex items-center gap-1" style={{ color: 'var(--mut)' }}>
-          {hasEntries
-            ? <span className="dd-num font-bold" style={{ fontSize: '0.9375rem', color: 'var(--tx)' }}>{fmt(sum)} ккал</span>
-            : (marks.some(m => m.date === date && m.slotId === slot.id) ? 'не учтён' : '')}
-        </div>
+        ) : (
+          <button type="button" className="text-[0.9375rem] font-semibold gap-2 dd-slot-link" aria-haspopup="dialog"
+            onClick={e => { e.stopPropagation(); onOpenInfo(slot); }}>
+            <span>{slot.emoji}</span>{slot.name}
+          </button>
+        )}
+        {hasEntries ? (
+          <button type="button" className="dd-slot-toggle dd-num text-xs text-right" style={{ color: 'var(--mut)' }}
+            aria-expanded={!collapsed} aria-label={`${collapsed ? 'Развернуть' : 'Свернуть'} записи · ${slot.name}`}
+            onClick={e => { e.stopPropagation(); toggle(); }}>
+            {collapsed && <span>{entries.length} {plural(entries.length)} · {fmt(totalGrams)} г · </span>}
+            <b className="text-[0.9375rem]" style={{ color: 'var(--tx)' }}>{fmt(sum)} ккал</b>
+            <span className="ml-1" aria-hidden="true">{collapsed ? '▾' : '▴'}</span>
+          </button>
+        ) : marks.some(m => m.date === date && m.slotId === slot.id) && (
+          <span className="text-xs" style={{ color: 'var(--mut)' }}>не учтён</span>
+        )}
       </div>
-      )}
       {!collapsed && (
         <>
           {entries.map(e => (
@@ -559,13 +569,14 @@ function EntryLine({ e, slot, showTime, onClick }: { e: Entry; slot: Slot; showT
   const isSnack = slot.defaultTime === null;
   const showT = showTime === 'all' || isSnack;
   return (
-    <div className="flex justify-between items-baseline gap-2 text-[0.84375rem] py-1 cursor-pointer" onClick={onClick}>
+    <button type="button" className="dd-day-entry flex justify-between items-baseline gap-2 text-[0.84375rem] py-1 cursor-pointer"
+      aria-haspopup="dialog" onClick={onClick}>
       <span className="flex-1 min-w-0 truncate" style={{ color: 'var(--mut)' }}>
         {showT && <span className="dd-num" style={{ color: 'var(--acc-fg)' }}>{e.timeEaten} · </span>}
         {name}{qtyLabel}
       </span>
       <span className="dd-num flex-none text-[0.90625rem]" style={{ color: 'var(--tx)' }}>{fmt(e.snapshot.kcal)}</span>
-    </div>
+    </button>
   );
 }
 

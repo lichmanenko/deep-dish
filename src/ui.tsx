@@ -247,14 +247,16 @@ export function ActionButton({ children, onClick, type }: { children: React.Reac
   return <button type={type} className="dd-action" onClick={onClick}>{children}</button>;
 }
 
-export function Modal({ open, onClose, children }: { open: boolean; onClose?: () => void; children: React.ReactNode }) {
+export function Modal({ open, onClose, children, label = 'Диалог Deep Dish' }: {
+  open: boolean; onClose?: () => void; children: React.ReactNode; label?: string;
+}) {
   useLockScroll(open);
   const panel = useRef<HTMLDivElement>(null);
   useDialogAccess(panel, open, onClose);
   if (!open) return null;
   return (
     <div className="dd-modal-bg" onClick={onClose}>
-      <div className="dd-modal" ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Диалог Deep Dish"
+      <div className="dd-modal" ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={label}
         onClick={e => e.stopPropagation()}>{children}</div>
     </div>
   );

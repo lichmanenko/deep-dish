@@ -156,12 +156,12 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <Section title="🍽 Мои приёмы" id="meals" defaultOpen>
             {mealList.map(m => (
               <SwipeRow key={m.id} onRemove={() => setDelMeal(m)}>
-                <div className="dd-item" role="button" onClick={() => tapMeal(m)}>
-                  <div className="min-w-0 flex-1">
-                    <div className="nm truncate">{m.name}</div>
-                    <div className="sub">{m.items.length} поз. · ~{Math.round(mealKcal(m))} ккал — тап, чтобы внести</div>
-                  </div>
-                </div>
+                <button type="button" className="dd-item" onClick={() => tapMeal(m)}>
+                  <span className="min-w-0 flex-1">
+                    <span className="nm block truncate">{m.name}</span>
+                    <span className="sub block">{m.items.length} поз. · ~{Math.round(mealKcal(m))} ккал</span>
+                  </span>
+                </button>
               </SwipeRow>
             ))}
           </Section>
@@ -199,7 +199,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
               <div className="dd-allhead" style={{ marginTop: 2 }}>Из интернета · Open Food Facts</div>
             )}
             {offHits.map(h => (
-              <div key={'off-' + h.id + h.name} className="dd-item" role="button"
+              <button type="button" key={'off-' + h.id + h.name} className="dd-item" aria-haspopup="dialog"
                 onClick={async () => {
                   const f = await saveOffHit(h);
                   setOffResult(result => result && { ...result, hits: [] });
@@ -215,11 +215,11 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
                     presetGrams: undefined, presetTime: nowHM(),
                   });
                 }}>
-                <div className="min-w-0 flex-1">
-                  <div className="nm truncate">{h.name}</div>
-                  <div className="sub">{h.brand ? h.brand + ' · ' : ''}{h.kcal} ккал/100 г · Б {h.p} · Ж {h.f} · У {h.c}</div>
-                </div>
-              </div>
+                <span className="min-w-0 flex-1">
+                  <span className="nm block truncate">{h.name}</span>
+                  <span className="sub block">{h.brand ? h.brand + ' · ' : ''}{h.kcal} ккал/100 г · Б {h.p} · Ж {h.f} · У {h.c}</span>
+                </span>
+              </button>
             ))}
           </>
         ) : (
@@ -299,25 +299,24 @@ function defaultGramsFor(i: CatalogItem): number {
 }
 
 function ItemRow({ item, onOpen, onManage, onWarn }: {
-  item: CatalogItem; onOpen: () => void; onStar?: () => void;
-  onManage: (i: CatalogItem) => void; onWarn: (w: string) => void;
+  item: CatalogItem; onOpen: () => void;
+  onManage: (i: CatalogItem) => void; onWarn: () => void;
 }) {
   const perLabel = item.unit === 'pc' ? 'ккал/порц.' : 'ккал/100 г';
   const mine = item.kind === 'recipe' || item.food.source !== 'system';
   const brand = item.kind === 'food' ? (item.food as { brand?: string }).brand : undefined;
   return (
-    <div className="dd-item" onClick={onOpen} role="button">
-      <div className="min-w-0 flex-1">
-        <div className="nm flex items-center gap-1.5">
-
-          <span className="truncate">{item.name}</span>
-          {item.suspicious && <span className="dd-warnmark cursor-pointer" onClick={e => { e.stopPropagation(); onWarn('warn'); }}>⚠️</span>}
-        </div>
-        {brand && <div className="sub" style={{ marginTop: 1, color: 'var(--acc-fg)', opacity: .85 }}>{brand}</div>}
-        <div className="sub">{item.kind === 'food' ? (item.food as { category?: string }).category ?? '' : 'Рецепты'} · {fmt(item.per100.kcal)} {perLabel}</div>
-      </div>
-      <div className="kc dd-num">{fmt(item.per100.p)}/{fmt(item.per100.f)}/{fmt(item.per100.c)}</div>
-      {mine && <button className="dd-more" title="Изменить или удалить" onClick={e => { e.stopPropagation(); onManage(item); }}>⋯</button>}
+    <div className="dd-item dd-item-with-actions">
+      <button type="button" className="dd-item-main" aria-haspopup="dialog" onClick={onOpen}>
+        <span className="min-w-0 flex-1">
+          <span className="nm block truncate">{item.name}</span>
+          {brand && <span className="sub block" style={{ marginTop: 1, color: 'var(--acc-fg)', opacity: .85 }}>{brand}</span>}
+          <span className="sub block">{item.kind === 'food' ? item.food.category ?? '' : 'Рецепты'} · {fmt(item.per100.kcal)} {perLabel}</span>
+        </span>
+        <span className="kc dd-num">{fmt(item.per100.p)}/{fmt(item.per100.f)}/{fmt(item.per100.c)}</span>
+      </button>
+      {item.suspicious && <button type="button" className="dd-more dd-warnmark" aria-label={`Пояснить КБЖУ · ${item.name}`} onClick={onWarn}>⚠️</button>}
+      {mine && <button type="button" className="dd-more" aria-label={`Свойства · ${item.name}`} onClick={() => onManage(item)}>⋯</button>}
     </div>
   );
 }
