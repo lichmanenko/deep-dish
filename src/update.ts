@@ -2,7 +2,7 @@
 // Данные пользователя живут в IndexedDB и переживают любые обновления кода.
 import { registerSW } from 'virtual:pwa-register';
 
-let hideTimer: number | undefined;
+let registration: ServiceWorkerRegistration | undefined;
 
 function showToast(apply: (reload: boolean) => void) {
   if (document.getElementById('dd-update-toast')) return;
@@ -17,17 +17,25 @@ function showToast(apply: (reload: boolean) => void) {
       </div>
     </div>`;
   document.body.appendChild(el);
-  const close = () => { el.classList.add('hide'); window.clearTimeout(hideTimer); setTimeout(() => el.remove(), 350); };
+  const close = () => { el.classList.add('hide'); window.setTimeout(() => el.remove(), 350); };
   el.querySelector('.dd-upd-later')!.addEventListener('click', close);
-  el.querySelector('.dd-upd-apply')!.addEventListener('click', () => { apply(true); });
+  el.querySelector('.dd-upd-apply')!.addEventListener('click', () => {
+    if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+      el.querySelector('.dd-upd-text')!.textContent = 'Закройте открытую карточку, чтобы обновить приложение';
+      return;
+    }
+    apply(true);
+  });
 }
 
 const updateSW = registerSW({
   onNeedRefresh() { showToast(updateSW); },
-  onOfflineReady() { /* офлайн-кэш готов — молчим */ },
+  onRegisteredSW(_url, worker) { registration = worker; },
 });
 
-// Вышли в сеть — тихо проверить обновление ( офлайн-пользователи получат его при первом контакте )
-window.addEventListener('online', () => { void updateSW(false); });
-// И раз в час при долгой открытой сессии
-window.setInterval(() => { void updateSW(false); }, 60 * 60 * 1000);
+function checkForUpdate() {
+  if (navigator.onLine) void registration?.update().catch(() => {});
+}
+
+window.addEventListener('online', checkForUpdate);
+window.setInterval(checkForUpdate, 60 * 60 * 1000);

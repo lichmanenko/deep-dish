@@ -11,7 +11,6 @@ import { ProfileScreen } from './screen-profile';
 import { SettingsScreen } from './screen-settings';
 import { fixLegacyCats } from './store';
 import { FamilyScreen } from './family';
-import { loadSync } from './sync';
 import type { Slot } from './db';
 
 type Tab = 'today' | 'family' | 'profile' | 'settings';
@@ -21,7 +20,6 @@ export default function App() {
   const setSettings = (s: DeviceSettings) => { saveSettings(s); setSettingsState(s); };
 
   const [tab, setTab] = useState<Tab>('today');
-  const [isAdmin] = useState(() => loadSync()?.role === 'admin');
   const [date, setDate] = useState(todayISO());
   const [addOpen, setAddOpen] = useState(false);
   const [addSlot, setAddSlot] = useState<Slot | null>(null);
@@ -36,10 +34,10 @@ export default function App() {
   useEffect(() => { applyTheme(settings.palette, dark, settings.textScale ?? 1); }, [settings.palette, dark, settings.textScale]);
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const h = () => { if (settings.theme === 'auto') applyTheme(settings.palette, mq.matches); };
+    const h = () => { if (settings.theme === 'auto') applyTheme(settings.palette, mq.matches, settings.textScale ?? 1); };
     mq.addEventListener('change', h);
     return () => mq.removeEventListener('change', h);
-  }, [settings.palette, settings.theme]);
+  }, [settings.palette, settings.theme, settings.textScale]);
 
   useEffect(() => { track('app_open', { online: navigator.onLine, cold: true }); }, []);
   useEffect(() => { fixLegacyCats(); }, []); // v0.7.3: чистка категорий-суррогатов
@@ -48,9 +46,16 @@ export default function App() {
   // Ручной дедуп — если понадобится, кнопкой в Настройках.
   useEffect(() => {
     autoSync();
-    const h = () => autoSync();
-    window.addEventListener('online', h);
-    return () => window.removeEventListener('online', h);
+    const reconnected = () => autoSync(true);
+    const check = () => autoSync();
+    const timer = window.setInterval(check, 60000);
+    window.addEventListener('online', reconnected);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('online', reconnected);
+      document.removeEventListener('visibilitychange', check);
+    };
   }, []);
 
   // Мотивационные баннеры: при старте и каждые 5 минут (окно срыва зависит от времени)
@@ -130,9 +135,10 @@ export default function App() {
             <TodayScreen
               date={date} setDate={setDate} showTime={settings.showTime}
               onAdd={slot => { setAddSlot(slot); setAddOpen(true); }}
+              onOpenProfile={() => setTab('profile')}
             />
           )}
-          {tab === 'family' && <FamilyScreen isAdmin={isAdmin} />}
+          {tab === 'family' && <FamilyScreen />}
           {tab === 'profile' && <ProfileScreen />}
           {banner && !addOpen && (
             <div className={'dd-banner' + (banner.kind === 'warn' ? ' warn' : '')} role="status">

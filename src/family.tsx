@@ -1,7 +1,7 @@
 // Вкладка «Семья»: синхронизация (все роли) + витрина метрик и токен (админ).
 // v0.4.1: выделена из Настроек — «всё семейное в одном месте» (В., 11.10).
 import { useEffect, useState } from 'react';
-import { loadSync, saveSync, registerDevice, runSync, syncStatusText, type SyncSettings } from './sync';
+import { loadSync, loadPausedSync, pauseSync, resumeSync, saveSync, registerDevice, runSync, syncStatusText, type SyncSettings } from './sync';
 import { fetchMetrics, type MetricsData } from './metrics';
 import { track } from './store';
 import { db } from './db';
@@ -9,11 +9,14 @@ import { achByCode } from './achievements';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Sheet, cx } from './ui';
 
-export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
+export function FamilyScreen() {
   const [sync, setSync] = useState<SyncSettings | null>(() => loadSync());
+  const [paused, setPaused] = useState(() => loadPausedSync());
+  const isAdmin = sync?.role === 'admin';
   const [srvAddr, setSrvAddr] = useState('');
   const [nick, setNick] = useState('');
-  const [adminTok, setAdminTok] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [issuedCode, setIssuedCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   // код моста: кэшируем — он статичен до «Обновить», копировать можно и вне домашней сети (В., 24.10)
@@ -25,6 +28,16 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
   const [pushMsg, setPushMsg] = useState<string | null>(null);
   const [pushDone, setPushDone] = useState(false);
   const [achFilter, setAchFilter] = useState('all');
+
+  useEffect(() => {
+    const refresh = () => { setSync(loadSync()); setPaused(loadPausedSync()); };
+    window.addEventListener('dd-sync-changed', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('dd-sync-changed', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
 
   async function loadHcode() {
     const st = loadSync();
@@ -52,10 +65,11 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
     if (busy) return;
     setBusy(true); setMsg(null);
     try {
-      const st = await registerDevice(srvAddr.trim(), nick.trim() || 'я', adminTok.trim() || undefined);
+      const st = await registerDevice(srvAddr.trim(), nick.trim() || 'я', inviteCode.trim() || undefined);
       // А4: единое имя — серверный nickname = displayName профиля (подтянет витрина)
       saveSync(st); setSync(st);
-      setMsg(`Подключено: ${st.nickname} (${st.role}). Теперь «Синхронизировать».`);
+      setInviteCode('');
+      setMsg(`Подключено: ${st.nickname}. Теперь «Синхронизировать».`);
     } catch (e) { setMsg(`Не получилось: ${(e as Error).message}`); }
     setBusy(false);
   }
@@ -65,10 +79,35 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
     setBusy(true); setMsg(null);
     try {
       const r = await runSync(true);
-      setMsg(r.ok ? 'Синхронизация прошла.' : `Синк не удался: ${r.error}`);
+      setMsg(r.ok ? 'Синхронизация прошла.' : `Синхронизация не завершена. ${r.error ?? 'Попробуйте ещё раз.'}`);
       setSync(loadSync());
       track('sync_manual', {});
     } catch (e) { setMsg(`Синк не удался: ${(e as Error).message}`); }
+    setBusy(false);
+  }
+
+  async function issueInvite() {
+    const settings = loadSync();
+    if (!settings || busy) return;
+    setBusy(true); setMsg(null); setIssuedCode('');
+    try {
+      const response = await fetch(settings.server.replace(/\/+$/, '') + '/admin/invite', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + settings.token },
+        signal: AbortSignal.timeout(9000),
+      });
+      if (response.status === 404) throw new Error('Для приглашений обновите сервер Deep Dish.');
+      if (!response.ok) throw new Error('Сервер не смог создать приглашение.');
+      const { code } = await response.json();
+      if (typeof code !== 'string' || !code) throw new Error('Сервер вернул пустое приглашение.');
+      setIssuedCode(code);
+      try {
+        await navigator.clipboard.writeText(code);
+        setMsg('Код скопирован. Он действует 15 минут и срабатывает один раз.');
+      } catch {
+        setMsg('Скопируйте показанный код. Он действует 15 минут и срабатывает один раз.');
+      }
+      track('invite_created');
+    } catch (error) { setMsg((error as Error).message); }
     setBusy(false);
   }
 
@@ -80,7 +119,7 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
         {sync ? (
           <>
             <div className="py-3">
-              <div className="text-sm">{syncStatusText()}</div>
+              <div className="text-sm">{syncStatusText(sync)}</div>
               <details style={{ marginTop: 4 }}>
                 <summary className="text-[0.6875rem]" style={{ color: 'var(--mut)', cursor: 'pointer' }}>для техники</summary>
                 <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)', wordBreak: 'break-all' }}>{sync.server}</div>
@@ -98,16 +137,13 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
                 {busy ? 'Синхронизирую…' : 'Синхронизировать'}
               </button>
                             <div style={{ borderTop: '1px solid var(--tr)', marginTop: 12, paddingTop: 12 }}></div>
-<button className="dd-action" style={{ width: '100%', marginTop: 8, color: 'var(--warn)' }}
-                onClick={() => { saveSync(null); setSync(null); setMsg('Это устройство отключено от семейного обмена. Все записи на месте.'); }}>Отключить это устройство</button>
+              <button className="dd-action" style={{ width: '100%', marginTop: 8 }} disabled={busy || pushBusy}
+                onClick={() => { setPaused(pauseSync()); setSync(null); setIssuedCode(''); setMsg('Обмен приостановлен. Записи доступны на устройстве.'); }}>Приостановить синхронизацию</button>
               {isAdmin && (<>
-                <button className="dd-action" style={{ width: '100%', marginTop: 8 }}
-                  onClick={() => {
-                    navigator.clipboard?.writeText(sync.token)
-                      .then(() => setMsg('Токен скопирован — передай его новому пользователю для подключения.'))
-                      .catch(() => setMsg('Токен: ' + sync.token));
-                    track('admin_token_copy');
-                  }}>Пригласить нового участника</button>
+                <button className="dd-action" style={{ width: '100%', marginTop: 8 }} disabled={busy}
+                  onClick={issueInvite}>Пригласить нового участника</button>
+                {issuedCode && <input className="dd-input mt-2" aria-label="Одноразовый код приглашения"
+                  readOnly value={issuedCode} onFocus={e => e.currentTarget.select()} />}
                 <button className="dd-action" style={{ width: '100%', marginTop: 8 }} disabled={pushBusy}
                   onClick={async () => {
                     setPushBusy(true); setPushMsg(null);
@@ -179,19 +215,27 @@ export function FamilyScreen({ isAdmin }: { isAdmin: boolean }) {
               )}
             </div>
           </>
+        ) : paused ? (
+          <div className="py-3">
+            <div className="text-sm mb-2">Семейный обмен приостановлен. Дневник участника «{paused.nickname}» доступен офлайн.</div>
+            <button className="dd-action strong w-full" onClick={() => {
+              try { setSync(resumeSync()); setPaused(null); setMsg('Подключение восстановлено.'); }
+              catch (error) { setMsg((error as Error).message); }
+            }}>Возобновить синхронизацию</button>
+          </div>
         ) : (
           <div className="py-3">
             <div className="text-sm mb-2">Подключить устройство к семейному серверу</div>
-            <input className="dd-input" placeholder="адрес сервера, напр. http://192.168.1.50:8687" value={srvAddr} onChange={e => setSrvAddr(e.target.value)} />
-            <input className="dd-input mt-2" placeholder="твоё имя в семье" value={nick} onChange={e => setNick(e.target.value)} />
-            <input className="dd-input mt-2" placeholder="админ-токен (для второго и далее участников)" value={adminTok} onChange={e => setAdminTok(e.target.value)} />
-            <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>первый подключившийся становится администратором; остальных подключает админ своим токеном</div>
+            <input className="dd-input" aria-label="Адрес сервера" placeholder="адрес сервера, начинается с https://" value={srvAddr} onChange={e => setSrvAddr(e.target.value)} />
+            <input className="dd-input mt-2" aria-label="Имя в семье" placeholder="твоё имя в семье" value={nick} onChange={e => setNick(e.target.value)} />
+            <input className="dd-input mt-2" aria-label="Код приглашения" placeholder="код приглашения" value={inviteCode} onChange={e => setInviteCode(e.target.value)} />
+            <div className="text-[0.6875rem] mt-1" style={{ color: 'var(--mut)' }}>Первый участник становится администратором. Остальные подключаются по приглашению.</div>
             <button className="dd-action strong mt-2" disabled={busy || !srvAddr.trim()} onClick={doRegister}>
               {busy ? 'Подключаю…' : 'Подключить'}
             </button>
           </div>
         )}
-        {msg && <div className="text-[0.75rem] pb-3" style={{ color: 'var(--acc-fg)' }}>{msg}</div>}
+        {msg && <div role="status" className="text-[0.75rem] pb-3" style={{ color: 'var(--acc-fg)' }}>{msg}</div>}
       </div>
 
       {sync && isAdmin && <MetricsCard />}

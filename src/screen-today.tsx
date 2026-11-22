@@ -24,13 +24,14 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Entry, type Slot, type SlotMark } from './db';
 import type { DayNorma } from './db';
 import { getEntries, getProfile, deleteEntry, saveEntry, track, saveMealFromSlot, ensureDayNorma, goalProgress, getSlotMarks, toggleSlotMark, type GoalProgress } from './store';
-import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt, loadSettings } from './lib';
+import { shiftISO, todayISO, humanDate, fromISO, MONTHS_NOM, fmt, loadSettings, parseQuantity } from './lib';
 import { Ring, Sheet, useSwipe, Slide, Confirm, cx, Modal, LogoMark } from './ui';
 import { pickFact, markFactClosed, type Fact } from './facts';
 import { detectAchievements, achByCode, type AchDef } from './achievements';
 
-export function TodayScreen({ date, setDate, onAdd, showTime }: {
-  date: string; setDate: (d: string) => void; onAdd: (slot: Slot | null) => void; showTime: 'snacks' | 'all';
+export function TodayScreen({ date, setDate, onAdd, onOpenProfile, showTime }: {
+  date: string; setDate: (d: string) => void; onAdd: (slot: Slot | null) => void;
+  onOpenProfile: () => void; showTime: 'snacks' | 'all';
 }) {
   const entries = useLiveQuery(() => getEntries(date), [date], [] as Entry[]);
   const slots = useLiveQuery(() => dbSlots(), [], [] as Slot[]);
@@ -39,7 +40,12 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
   const compact = useMemo(() => (loadSettings().textScale ?? 1) > 1.05, []);
   // норма дня: снапшот, фиксируется за днём при первом просмотре (прошлое не пересчитывается)
   const [norma, setNorma] = useState<DayNorma | null>(null);
-  useEffect(() => { ensureDayNorma(date).then(setNorma); }, [date, profile?.updatedAt]);
+  useEffect(() => {
+    let current = true;
+    setNorma(null);
+    ensureDayNorma(date).then(value => { if (current) setNorma(value); });
+    return () => { current = false; };
+  }, [date, profile?.updatedAt]);
 
   const [dir, setDir] = useState<0 | -1 | 1>(0);
   const [ringMode, setRingMode] = useState<'kcal' | 'macro'>(localStorage.getItem('dd-ringmode') === 'macro' ? 'macro' : 'kcal');
@@ -99,7 +105,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
     kcal: s.kcal + e.snapshot.kcal, p: s.p + e.snapshot.p, f: s.f + e.snapshot.f, c: s.c + e.snapshot.c,
   }), { kcal: 0, p: 0, f: 0, c: 0 }), [entries]);
 
-  const target = norma?.kcal ?? 2100;
+  const target = norma?.kcal ?? 0;
   const percent = target ? Math.min(999, Math.round(totals.kcal / target * 100)) : 0;
   const rest = Math.max(0, target - totals.kcal);
 
@@ -136,12 +142,13 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
       <div className="dd-alwayson">
         {!norma && (
           <div className="dd-card p-3 mb-2 text-xs text-center" style={{ color: 'var(--mut)' }}>
-            Заполни профиль — появится дневная норма и кольцо. <b style={{ color: 'var(--acc-fg)' }}>Профиль →</b>
+            Заполни профиль для расчёта дневной нормы.{' '}
+            <button className="dd-link-btn" onClick={onOpenProfile}>Открыть профиль</button>
           </div>
         )}
         <div className="dd-card p-4 mb-3">
-          <div className="grid grid-cols-3 items-center">
-            <div className="flex justify-center">
+          <div className={cx('grid items-center', norma ? 'grid-cols-3' : 'grid-cols-1')}>
+            {norma && <div className="flex justify-center">
               <button aria-label="Переключить кольцо" onClick={toggleRingMode} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
                 {ringMode === 'kcal' ? (
                   <Ring percent={percent}>
@@ -155,16 +162,16 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                   </MacroRing>
                 )}
               </button>
-            </div>
+            </div>}
             <div className="text-center px-1">
               <button className="text-xl font-bold dd-num" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                 onClick={() => setDayInfo(true)} aria-label="Баланс дня">{fmt(totals.kcal)}</button>
-              {!compact
+              {!norma ? <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>съедено, ккал</div> : !compact
                 ? <div className="text-xs mt-1" style={{ color: 'var(--mut)' }}>съедено из {fmt(target)} ккал</div>
                 : <div className="text-xs mt-1 dd-num" style={{ color: 'var(--mut)' }}>{percent}%</div>}
               {percent > 100 && <div className="text-xs mt-1" style={{ color: 'var(--warn)' }}>↑ перебор на {fmt(totals.kcal - target)}</div>}
             </div>
-            <div className="flex justify-center">
+            {norma && <div className="flex justify-center">
               {goal && <GoalRing goal={goal} compact={compact} onTap={() => setGoalInfo(true)} />}
               {!goal && (
                 <button onClick={() => setGoalInfo(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
@@ -175,7 +182,7 @@ export function TodayScreen({ date, setDate, onAdd, showTime }: {
                   </div>
                 </button>
               )}
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -434,7 +441,7 @@ function SlotCard({ slot, entries, marks, date, showTime, onAdd, onOpenInfo, onE
           {entries.map(e => (
             <EntryLine key={e.id} e={e} slot={slot} showTime={showTime} onClick={() => onEditEntry(e)} />
           ))}
-          <div className="dd-slot-add" onClick={e => { e.stopPropagation(); track('slot_add_tap', { slot: slot.id }); onAdd(slot); }}>＋ блюдо</div>
+          <button className="dd-slot-add" aria-label={'Добавить еду · ' + slot.name} onClick={e => { e.stopPropagation(); track('slot_add_tap', { slot: slot.id }); onAdd(slot); }}>＋ блюдо</button>
         </>
       )}
     </div>
@@ -457,7 +464,7 @@ function SlotLine({ e, dots }: { e: Entry; dots?: Array<'p' | 'f' | 'c'> }) {
     let alive = true;
     (async () => {
       const f = e.kind === 'food' ? await db.foods.get(e.refId) : await db.recipes.get(e.refId);
-      if (alive) { setName(f?.name ?? '—'); setIsPc(f?.unit === 'pc'); }
+      if (alive) { setName(f?.name ?? '—'); setIsPc((e.unit ?? f?.unit) === 'pc'); }
     })();
     return () => { alive = false; };
   }, [e]);
@@ -529,7 +536,6 @@ function GoalRing({ goal, compact, onTap }: { goal: GoalProgress; compact?: bool
 
 
 async function dbSlots(): Promise<Slot[]> {
-  const { db } = await import('./db');
   const s = await db.slots.filter(x => !x.deletedAt).toArray();
   return s.sort((a, b) => a.sortOrder - b.sortOrder);
 }
@@ -606,19 +612,22 @@ function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () =
   const [time, setTime] = useState('');
   const [isPcEdit, setIsPcEdit] = useState(false);
   React.useEffect(() => {
+    let alive = true;
     (async () => {
       if (entry) {
         // порционные записи хранят шт×100: в поле — штуки (В., 03.11+09.11: «1гр 0ккал» — полная развязка)
         const f = await (entry.kind === 'food' ? db.foods.get(entry.refId) : db.recipes.get(entry.refId));
-        const pc = f?.unit === 'pc';
+        if (!alive) return;
+        const pc = (entry.unit ?? f?.unit) === 'pc';
         setIsPcEdit(pc);
-        setQty(String(pc ? Math.round((entry.grams / 100) * 100) / 100 : Math.round(entry.grams)));
+        setQty(String(pc ? entry.grams / 100 : entry.grams).replace('.', ','));
         setTime(entry.timeEaten);
       }
     })();
+    return () => { alive = false; };
   }, [entry]);
   if (!entry) return null;
-  const n = parseFloat(qty.replace(',', '.')) || 0;
+  const n = parseQuantity(qty);
   const grams = isPcEdit ? n * 100 : n; // внутреннее представление (шт×100 или г)
   const ratio = grams / Math.max(entry.grams, 0.01); // отношение к исходному — калории масштабируются
   return (
@@ -626,11 +635,11 @@ function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () =
       <div className="dd-input-row">
         <div className="flex-1">
           <div className="dd-field-label" style={{ marginTop: 0 }}>{isPcEdit ? 'Порций (шт)' : 'Вес, г'}</div>
-          <input className="dd-input dd-num" type="number" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} />
+          <input className="dd-input dd-num" aria-label={isPcEdit ? 'Количество порций' : 'Вес, г'} type="text" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} />
         </div>
         <div style={{ width: 120 }}>
           <div className="dd-field-label" style={{ marginTop: 0 }}>Время</div>
-          <input className="dd-input dd-num" type="time" value={time} onChange={e => setTime(e.target.value)} />
+          <input className="dd-input dd-num" aria-label="Время приёма пищи" type="time" value={time} onChange={e => setTime(e.target.value)} />
         </div>
       </div>
       <div className="dd-card p-3 mt-3 text-center text-xs" style={{ color: 'var(--mut)' }}>
@@ -638,8 +647,8 @@ function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () =
       </div>
       <div className="flex gap-2 mt-4">
         <button className="dd-action" onClick={async () => { await deleteEntry(entry.id); track('entry_deleted'); onClose(); }}>Удалить</button>
-        <button className="dd-action strong" onClick={async () => {
-          await saveEntry({ ...entry, grams, timeEaten: time, snapshot: {
+        <button className="dd-action strong" disabled={!Number.isFinite(n) || n <= 0 || !time} onClick={async () => {
+          await saveEntry({ ...entry, grams, unit: isPcEdit ? 'pc' : 'g', timeEaten: time, snapshot: {
             kcal: Math.round(entry.snapshot.kcal * ratio), p: Math.round(entry.snapshot.p * ratio * 10) / 10,
             f: Math.round(entry.snapshot.f * ratio * 10) / 10, c: Math.round(entry.snapshot.c * ratio * 10) / 10,
           } });

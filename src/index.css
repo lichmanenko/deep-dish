@@ -245,6 +245,7 @@ input[type=time].dd-input { padding: 0 8px; }
   transition: transform .35s cubic-bezier(.22,1,.36,1), opacity .3s;
 }
 .dd-tabbar.hidden { transform: translateY(140%); opacity: 0; pointer-events: none; }
+.dd-tabbar.hidden:focus-within { transform: none; opacity: 1; pointer-events: auto; }
 .dd-tabzone {
   position: fixed; left: 0; right: 0; bottom: 0; height: calc(34px + env(safe-area-inset-bottom)); z-index: 39;
 }
@@ -324,7 +325,7 @@ input[type=time].dd-input { padding: 0 8px; }
 }
 .dd-allhead { font-size: 0.6875rem; font-weight: 700; color: var(--mut); margin: 14px 2px 8px; letter-spacing: .04em; text-transform: uppercase; }
 .dd-slot-save { background: none; border: none; font-size: 0.875rem; cursor: pointer; padding: 4px 7px; opacity: .7; }
-.dd-slot-add { color: var(--acc-fg); } /* v0.7.16: акцент вместо мутного */ { font-size: 0.75rem; color: var(--acc-fg); padding: 6px 0 2px 25px; cursor: pointer; font-weight: 600; }
+.dd-slot-add { font-size: 0.875rem; color: var(--acc-fg); min-height: 44px; padding: 4px 8px; cursor: pointer; font-weight: 600; }
 
 /* ── Прочее ── */
 .dd-info {

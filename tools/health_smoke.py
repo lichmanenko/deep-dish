@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Smoke-тест моста Apple Health (Е8, ревью-2): прогонять при изменениях backend/server.py.
+"""HTTP-проверка моста Apple Health на отдельной синтетической базе.
 
-Требует живой сервер: python -m uvicorn server:app --port 8687 (из backend/).
-Использование: python tools/health_smoke.py http://127.0.0.1:8687
+Требует локальный сервер с пустой SQLite (DD_DB должен указывать на файл теста).
+Использование: python tools/health_smoke.py http://127.0.0.1:8689
 
 Проверяет: код моста (создание/сброс), пачку весов, идемпотентность по дате,
 воскрешение после удаления (Е1), проброс серверного tombstone в тело выдачи /sync (Е1),
@@ -12,11 +12,14 @@ import json
 import secrets
 import sys
 import time
+from urllib.parse import urlsplit
 import urllib.request
 
 BASE_MS = int(time.time() * 1000)
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else 'http://127.0.0.1:8687'
+BASE = sys.argv[1] if len(sys.argv) > 1 else 'http://127.0.0.1:8689'
+if urlsplit(BASE).hostname not in {'127.0.0.1', 'localhost', '::1'}:
+    sys.exit('Нужен локальный сервер с отдельной синтетической базой')
 FAILS = []
 
 
@@ -37,12 +40,12 @@ def check(name, ok):
         FAILS.append(name)
 
 
-# 1) тестовый пользователь + bearer (на нечистой базе — вторым аргументом админ-токен)
+# 1) тестовый пользователь + bearer
 nick = 'smoke-' + secrets.token_hex(3)
 ok, r = call('POST', '/register', {'nickname': nick})
-if not ok and len(sys.argv) > 2:
-    ok, r = call('POST', '/register', {'nickname': nick, 'adminToken': sys.argv[2]})
 check('register', ok and r.get('token'))
+if not ok:
+    sys.exit('Запустите проверку на пустой синтетической базе')
 tok = r['token']
 auth = {'Authorization': 'Bearer ' + tok}
 
@@ -53,6 +56,7 @@ code = r['code']
 ok, r = call('POST', '/health/code', {'reset': True}, auth)
 check('сброс кода меняет его', ok and r.get('code') and r['code'] != code)
 code = r['code']
+bridge = {'X-DeepDish-Health-Code': code}
 
 # 3) чужой код не проходит
 ok, _ = call('POST', '/health/weight?code=WRONGCODE1', [{'date': '2026-01-01', 'kg': 80}], expect=401)
@@ -97,13 +101,48 @@ ok, r = call('POST', '/sync', {'since': 0, 'changes': [], 'events': []}, auth)
 manual = [c['body'] for c in r['changes'] if c['kind'] == 'weightLogs' and c['body'].get('id') == f'manual-{BASE_MS}'][0]
 check('Е1: серверный tombstone виден клиенту (deletedAt в теле)', bool(manual.get('deletedAt')))
 
-# 8) итог дня
-call('POST', '/sync', {'since': r.get('maxUpdated') or 0, 'changes': [
-    {'kind': 'entries', 'body': {'id': f'e-{BASE_MS}', 'userId': 'x', 'date': '2026-01-02', 'slotId': 's', 'kind': 'food',
-                                 'refId': 'f', 'grams': 100, 'snapshot': {'kcal': 250, 'p': 1, 'f': 1, 'c': 1},
-                                 'timeEaten': '12:00', 'createdAt': 1, 'updatedAt': BASE_MS + 3}}], 'events': []}, auth)
-ok, r = call('GET', '/health/day?date=2026-01-02&code=' + code)
-check('итог дня = 250', ok and r.get('kcal') == 250)
+# Запрос словарём соответствует действию JSON в «Быстрых командах». Старая пачка остаётся совместимой.
+latest = {'date': '2026-01-04', 'kg': 79.5, 'measuredAt': '2026-01-04T00:30:00+03:00'}
+earlier = {'date': '2026-01-04', 'kg': 79.8, 'measuredAt': '2026-01-04T00:05:00+03:00'}
+ok, first = call('POST', '/health/weight', latest, bridge)
+check('один JSON-объект с заголовком', ok and first.get('applied') == 1)
+ok, repeat = call('POST', '/health/weight', latest, bridge)
+check('повтор того же измерения ничего не меняет', ok and repeat.get('applied') == 0)
+ok, old = call('POST', '/health/weight', [earlier], bridge)
+check('старое показание не заменяет новое', ok and old.get('applied') == 0)
+ok, day_sync = call('POST', '/sync', {'since': 0, 'changes': []}, auth)
+record = next((c['body'] for c in day_sync.get('changes', []) if c['kind'] == 'weightLogs'
+               and c['body'].get('date') == '2026-01-04'), {})
+check('замер у полуночи остался на локальной дате', ok and record.get('weightKg') == 79.5)
+
+old_id = f'manual-incremental-{BASE_MS}'
+_, before = call('POST', '/sync', {'since': 0, 'changes': [
+    {'kind': 'weightLogs', 'body': {'id': old_id, 'date': '2026-01-05', 'weightKg': 77,
+                                    'createdAt': BASE_MS, 'updatedAt': BASE_MS}}]}, auth)
+time.sleep(.02)
+call('POST', '/health/weight', {'date': '2026-01-05', 'kg': 76.5}, bridge)
+ok, delta = call('POST', '/sync', {'since': before['maxUpdated'], 'changes': []}, auth)
+weight_delta = [c['body'] for c in delta.get('changes', []) if c['kind'] == 'weightLogs']
+check('инкрементально дошла замена ручного веса', ok
+      and any(item['id'] == old_id and item.get('deletedAt') for item in weight_delta)
+      and any(item.get('weightKg') == 76.5 and item.get('source') == 'health' for item in weight_delta))
+ok, invalid = call('POST', '/health/weight', {'date': '2026-02-30', 'kg': 76}, bridge)
+check('невозможная дата веса пропускается', ok and invalid.get('skipped') == ['invalid_date'])
+
+# 8) итог дня и поздняя правка на NAS
+entry = {'id': f'e-{BASE_MS}', 'date': '2026-01-02', 'slotId': 's', 'kind': 'food',
+         'refId': 'f', 'grams': 100, 'snapshot': {'kcal': 250, 'p': 1, 'f': 1, 'c': 1},
+         'timeEaten': '12:00', 'createdAt': 1, 'updatedAt': BASE_MS + 3}
+call('POST', '/sync', {'since': 0, 'changes': [{'kind': 'entries', 'body': entry}]}, auth)
+ok, r = call('GET', '/health/day?date=2026-01-02', headers=bridge)
+check('итог локальной даты = 250', ok and r.get('date') == '2026-01-02' and r.get('kcal') == 250)
+entry['snapshot']['kcal'] = 275
+entry['updatedAt'] += 1
+call('POST', '/sync', {'since': 0, 'changes': [{'kind': 'entries', 'body': entry}]}, auth)
+ok, r = call('GET', '/health/day?date=2026-01-02', headers=bridge)
+check('после поздней правки API отдаёт 275, а не сумму двух версий', ok and r.get('kcal') == 275)
+ok, _ = call('GET', '/health/day?date=2026-02-30', headers=bridge, expect=422)
+check('явная невозможная дата калорий отклоняется', ok)
 
 print('\n' + ('ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ' if not FAILS else f'ПРОВАЛЕНО: {len(FAILS)}: {FAILS}'))
 sys.exit(1 if FAILS else 0)

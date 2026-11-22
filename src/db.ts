@@ -60,6 +60,7 @@ export interface Entry {
   timeApprox?: boolean;
   slotId: string;
   kind: 'food' | 'recipe'; refId: string; grams: number;
+  unit?: 'g' | 'pc';
   snapshot: KbjuSnapshot;  // ккал/Б/Ж/У порции на момент ввода
   note?: string;
   createdAt: number; updatedAt: number; deletedAt: number | null;
@@ -102,6 +103,7 @@ export interface DayNorma {
     /** v0.5.0: прогресс цели-темпа за этот день (тренд/план, %) */
     goalPct?: number; trendPw?: number; planPw?: number };
   createdAt: number;
+  updatedAt?: number;
 }
 
 export interface Profile {
@@ -134,6 +136,14 @@ export interface Profile {
 
 export interface MetricEvent {
   id: string; ts: number; session: string; name: string; props: string; // JSON
+}
+
+export interface SyncReceipt {
+  scope: string;
+  kind: string;
+  id: string;
+  fingerprint: string;
+  updatedAt: number;
 }
 
 // ── Идентификаторы ────────────────────────────────────────────────────────────
@@ -169,6 +179,7 @@ class DeepDishDb extends Dexie {
   profiles!: EntityTable<Profile, 'userId'>;
   events!: EntityTable<MetricEvent, 'id'>;
   achievements!: EntityTable<Achievement, 'id'>;
+  syncReceipts!: import('dexie').Table<SyncReceipt, [string, string, string]>;
 
   constructor() {
     super('deepdish');
@@ -268,6 +279,19 @@ class DeepDishDb extends Dexie {
     this.version(7).stores({
       achievements: 'id, userId, code, unlockedAt',
     });
+    this.version(8).stores({
+      syncReceipts: '[scope+kind+id], scope',
+    }).upgrade(async tx => {
+      const foods = await tx.table('foods').toArray();
+      const recipes = await tx.table('recipes').toArray();
+      const units = new Map([
+        ...foods.map(row => ['food:' + row.id, row.unit] as const),
+        ...recipes.map(row => ['recipe:' + row.id, row.unit] as const),
+      ]);
+      await tx.table('entries').toCollection().modify((entry: Entry) => {
+        entry.unit ??= units.get(entry.kind + ':' + entry.refId) === 'pc' ? 'pc' : 'g';
+      });
+    });
   }
 }
 
@@ -280,7 +304,7 @@ const DEFAULT_SLOTS: Array<Pick<Slot, 'id' | 'name' | 'emoji' | 'sortOrder' | 'd
   { id: 'slot-snack', name: 'Перекус', emoji: '🍎', sortOrder: 4, defaultTime: null },
 ];
 
-db.on('populate', (tx) => {
+export async function seedCatalogAndSlots(tx: import('dexie').Transaction) {
   const foods: Food[] = (productsSeed as Array<Record<string, unknown>>).map(p => ({
     id: String(p.id), name: String(p.name), category: String(p.category),
     kcalPer100g: Number(p.caloriesPer100g), pPer100g: Number(p.proteinPer100g),
@@ -288,9 +312,11 @@ db.on('populate', (tx) => {
     source: 'system', ownerId: 'system', isPublic: true, star: false,
     createdAt: EPOCH, updatedAt: EPOCH, deletedAt: null,
   }));
-  tx.table('foods').bulkAdd(foods);
-  tx.table('slots').bulkAdd(DEFAULT_SLOTS.map(s => ({
+  await tx.table('foods').bulkAdd(foods);
+  await tx.table('slots').bulkAdd(DEFAULT_SLOTS.map(s => ({
     ...s, isDefault: true, ownerId: LOCAL_USER,
     createdAt: EPOCH, updatedAt: EPOCH, deletedAt: null,
   })));
-});
+}
+
+db.on('populate', seedCatalogAndSlots);

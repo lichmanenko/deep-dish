@@ -1,206 +1,436 @@
-// Клиент семейного синка (M2): обмен POST /sync по SPEC §4.
-// Один bearer-токен на устройство, since = serverTime прошлого ответа,
-// отправка изменений (updatedAt > lastPush) + досыл событий метрик.
-import { db } from './db';
+import type { Table } from 'dexie';
+import { db, LOCAL_USER, type MetricEvent, type SyncReceipt } from './db';
+import { track } from './store';
+
+interface PullCursor {
+  applied: number;
+  kind: string;
+  id: string;
+  owner: string;
+}
+
+const START_CURSOR: PullCursor = { applied: 0, kind: '', id: '', owner: '' };
+const PUSH_SIZE = 1000;
+const EVENTS_SIZE = 500;
+const LEGACY_PULL_SIZE = 5000;
+const AUTO_INTERVAL = 5 * 60 * 1000;
 
 export interface SyncSettings {
-  server: string;      // https://nas:8687 или http://192.168.x.x:8687 (в сети дома)
+  server: string;
   userId: string;
   token: string;
   nickname: string;
   role: 'admin' | 'member';
-  since: number;       // serverTime последнего успешного обмена
-  lastPush: number;    // client updatedAt, всё что новее — кандидаты на отправку
-  lastOk: number;      // ts последнего успешного синка (для статуса)
+  since: number;
+  cursor?: PullCursor;
+  lastPush: number;
+  lastOk: number;
 }
 
-const KEY = 'dd-sync';
-const TABLES = {
-  foods: db.foods, recipes: db.recipes, entries: db.entries,
-  weightLogs: db.weightLogs, dayNormas: db.dayNormas,
-  slots: db.slots, savedMeals: db.savedMeals,
-  achievements: db.achievements, // v0.7.6: публичные записи семьи
-} as const;
-type Kind = keyof typeof TABLES;
-const PROFILE_KEY = 'profiles' as const;
-const PRIVATE_KINDS = new Set(['entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals']);
-// achievements — публичные: userId в теле остаётся автором (для «кто» в ленте семьи)
+const ACTIVE_KEY = 'dd-sync';
+const PAUSED_KEY = 'dd-paused-sync';
+const OWNER_KEY = 'dd-data-owner';
+
+type Row = Record<string, unknown>;
+const REPLICAS = {
+  foods: db.foods, recipes: db.recipes, slots: db.slots, entries: db.entries,
+  weightLogs: db.weightLogs, dayNormas: db.dayNormas, slotMarks: db.slotMarks,
+  savedMeals: db.savedMeals, profiles: db.profiles, achievements: db.achievements,
+};
+type Kind = keyof typeof REPLICAS;
+const KINDS = Object.keys(REPLICAS) as Kind[];
+const PRIVATE = new Set<Kind>(['slots', 'entries', 'weightLogs', 'dayNormas', 'slotMarks', 'savedMeals', 'profiles']);
+const TABLES = KINDS.map(kind => REPLICAS[kind]);
+
+function tableFor(kind: Kind): Table<Row, string> {
+  return REPLICAS[kind] as unknown as Table<Row, string>;
+}
+
+function isKind(value: string): value is Kind {
+  return Object.hasOwn(REPLICAS, value);
+}
+
+function keyFor(kind: Kind, row: Row): string | undefined {
+  const key = kind === 'dayNormas' ? row.date : kind === 'profiles' ? LOCAL_USER : row.id;
+  return typeof key === 'string' && key ? key : undefined;
+}
+
+function receiptKey(kind: string, id: string): string {
+  return JSON.stringify([kind, id]);
+}
+
+function trimServer(address: string): string {
+  return address.trim().replace(/\/+$/, '');
+}
+
+type DiaryOwner = Pick<SyncSettings, 'server' | 'userId'>;
+
+function scopeFor(owner: DiaryOwner): string {
+  return JSON.stringify([trimServer(owner.server), owner.userId]);
+}
+
+export function loadDiaryOwner(): DiaryOwner | null {
+  const saved = localStorage.getItem(OWNER_KEY);
+  if (saved) {
+    const [server, userId] = JSON.parse(saved);
+    return { server, userId };
+  }
+  const settings = loadSync() ?? loadPausedSync();
+  return settings ? { server: settings.server, userId: settings.userId } : null;
+}
+
+export function bindDiary(owner: DiaryOwner) {
+  const scope = scopeFor(owner);
+  const current = loadDiaryOwner();
+  if (current && scopeFor(current) !== scope) {
+    throw new Error('Этот дневник привязан к другому участнику. Перед сменой участника сохраните копию дневника и очистите данные на устройстве.');
+  }
+  localStorage.setItem(OWNER_KEY, scope);
+}
+
+function readSettings(key: string): SyncSettings | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 export function loadSync(): SyncSettings | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  return null;
-}
-export function saveSync(s: SyncSettings | null) {
-  if (s) localStorage.setItem(KEY, JSON.stringify(s));
-  else localStorage.removeItem(KEY);
+  return readSettings(ACTIVE_KEY);
 }
 
-/** регистрация устройства на сервере; первый участник становится admin */
-export async function registerDevice(server: string, nickname: string, adminToken?: string): Promise<SyncSettings> {
-  const url = server.replace(/\/+$/, '') + '/register';
-  const res = await fetch(url, {
+export function loadPausedSync(): SyncSettings | null {
+  return readSettings(PAUSED_KEY);
+}
+
+export function saveSync(settings: SyncSettings | null) {
+  if (!settings) {
+    localStorage.removeItem(ACTIVE_KEY);
+    window.dispatchEvent(new Event('dd-sync-changed'));
+    return;
+  }
+  bindDiary(settings);
+  localStorage.setItem(ACTIVE_KEY, JSON.stringify(settings));
+  window.dispatchEvent(new Event('dd-sync-changed'));
+}
+
+export function pauseSync(): SyncSettings | null {
+  const settings = loadSync();
+  if (settings) {
+    saveSync(settings);
+    localStorage.setItem(PAUSED_KEY, JSON.stringify(settings));
+    saveSync(null);
+  }
+  return settings;
+}
+
+export function resumeSync(): SyncSettings | null {
+  const settings = loadPausedSync();
+  if (settings) {
+    saveSync(settings);
+    localStorage.removeItem(PAUSED_KEY);
+  }
+  return settings;
+}
+
+export function forgetSync() {
+  saveSync(null);
+  localStorage.removeItem(PAUSED_KEY);
+  localStorage.removeItem(OWNER_KEY);
+  localStorage.removeItem('dd-hcode');
+}
+
+export async function registerDevice(server: string, nickname: string, invitation?: string): Promise<SyncSettings> {
+  if (loadDiaryOwner()) {
+    throw new Error('На этом устройстве уже есть семейный дневник. Возобновите прежнее подключение.');
+  }
+  const base = trimServer(server);
+  const address = new URL(base);
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(address.hostname);
+  if (address.username || address.password || address.search || address.hash
+      || (address.protocol !== 'https:' && !(local && address.protocol === 'http:'))) {
+    throw new Error('Укажите HTTPS-адрес семейного сервера.');
+  }
+  const res = await fetch(base + '/register', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nickname, adminToken }),
+    body: JSON.stringify({ nickname, inviteCode: invitation }),
     signal: AbortSignal.timeout(9000),
   });
-  if (!res.ok) throw new Error((await res.text()) || `сервер ответил ${res.status}`);
+  if (!res.ok) {
+    const result = await res.json().catch(() => null);
+    throw new Error(typeof result?.detail === 'string' ? result.detail : 'Сервер отклонил подключение.');
+  }
   const r = await res.json();
-  return { server, userId: r.userId, token: r.token, nickname, role: r.role, since: 0, lastPush: 0, lastOk: 0 };
+  return { server: base, userId: r.userId, token: r.token, nickname, role: r.role, since: 0, lastPush: 0, lastOk: 0 };
 }
 
 export interface SyncResult { ok: boolean; pushed: number; pulled: number; error?: string }
 
-/** один обмен: свои изменения + события → сервер; чужие/общие изменения → себе.
- *  force (ручная кнопка): пуш-окно расширяется на 7 дней назад — застрявшие из-за скачка
- *  серверных часов записи доедут (LWW делает повторы идемпотентными) — срочный фикс 26.10. */
-export async function runSync(force = false): Promise<SyncResult> {
-  const st = loadSync();
-  if (!st) return { ok: false, pushed: 0, pulled: 0, error: 'синк не настроен' };
-  const base = st.server.replace(/\/+$/, '');
+interface WireChange {
+  kind: string;
+  body: Row;
+  updated: number;
+}
 
-  // собрать свои изменения новее lastPush
-  const changes: Array<{ kind: string; body: unknown }> = [];
-  const pushFloor = force ? Math.max(0, st.lastPush - 7 * 86400000) : st.lastPush;
-  // filter, не where: updatedAt не в индексах схемы — where бросает «not indexed» (инцидент В., 26.10);
-  // объёмы семейные — полный проход недорог
-  const above = (arr: Array<{ updatedAt?: number }>) => arr.filter(x => (x.updatedAt ?? 0) > st.lastPush).length;
-  const localPending = above(await db.entries.toArray())
-    + above(await db.foods.toArray())
-    + above(await db.weightLogs.toArray());
-  // v0.7.17 (аудит 12.11): усечение пуша лимитом 2000 тихо теряло хвост — lastPush прыгал на
-  // serverTime, и неотправленные строки навсегда выпадали из окна. Для таблиц, упёршихся в
-  // лимит, запоминаем максимум фактически отправленного updatedAt — он и станет полом.
-  const hitLimit = new Map<Kind, number>();
-  for (const k of Object.keys(TABLES) as Kind[]) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = await (TABLES[k] as any)
-      .filter((x: { updatedAt: number }) => x.updatedAt > pushFloor)
-      .limit(2000).toArray() as Array<Record<string, unknown>>;
-    if (rows.length >= 2000) {
-      hitLimit.set(k, rows.reduce((m: number, r) => Math.max(m, Number(r.updatedAt) || 0), 0));
-    }
-    for (const r of rows) {
-      const body = { ...r };
-      if (PRIVATE_KINDS.has(k)) body.userId = st.userId;
-      if (k === 'achievements' && (body as { userId?: string }).userId === 'local') body.userId = st.userId; // автор = это устройство
-      // v0.7.17 (аудит tombstone-цикла): tombstone продукта уезжает на сервер ТОЛЬКО с
-      // провенансом delBy='user' (его ставит кнопка удаления в UI). Эхо дедупа v0.7.10–
-      // 0.7.14 (без delBy) не отправляется вовсе и вдобавок воскрешается сервером (0.4.6) —
-      // цикл «удалил-вытянул-удалил» разомкнут с двух концов. Записи/рецепты: удаления
-      // легитимны всегда, LWW как был.
-      if (k === 'foods' && body.deletedAt && body.delBy !== 'user') continue;
-      changes.push({ kind: k, body });
-    }
+interface PendingChange {
+  kind: Kind;
+  id: string;
+  body: Row;
+  fingerprint: string;
+  updatedAt: number;
+  baseUpdated?: number;
+}
+
+interface SyncResponse {
+  changes: WireChange[];
+  corrections?: WireChange[];
+  results?: string[];
+  serverTime: number;
+  maxUpdated?: number;
+  cursor?: PullCursor;
+  hasMore?: boolean;
+  applied?: number;
+  rejected?: number;
+}
+
+function ownWritable(kind: Kind, row: Row, settings: SyncSettings): boolean {
+  if (PRIVATE.has(kind)) return true;
+  if (kind === 'achievements') return row.userId === LOCAL_USER || row.userId === settings.userId;
+  return !row.ownerId || [LOCAL_USER, 'system', settings.userId].includes(String(row.ownerId));
+}
+
+function localVersion(kind: Kind, row: Row): number {
+  const value = row.updatedAt ?? (kind === 'dayNormas' ? row.createdAt : undefined);
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 0;
+}
+
+function normalizeIncoming(change: WireChange, settings: SyncSettings): Row {
+  const body = { ...change.body, updatedAt: change.updated };
+  if (isKind(change.kind) && PRIVATE.has(change.kind)) {
+    return { ...body, userId: LOCAL_USER };
   }
-  const pr = await db.profiles.get('local');
-  if (pr) changes.push({ kind: PROFILE_KEY, body: { ...pr } });
-
-  const evs = (await db.events.orderBy('ts').reverse().limit(500).toArray()).map(e => ({
-    id: e.id, ts: e.ts, name: e.name, props: e.props,
-  })).reverse();
-
-  let res: Response;
-  try {
-    res = await fetch(base + '/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + st.token },
-      body: JSON.stringify({ since: st.since, changes, events: evs, client_now: Date.now() }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) throw new Error(`сервер ответил ${res.status}`);
-  } catch (e) {
-    (await import('./store')).track('sync_fail', { msg: String((e as Error).message).slice(0, 90), since: st.since, sent: changes.length });
-    throw e;
+  if (change.kind === 'achievements' && change.body.userId === settings.userId) {
+    return { ...body, userId: LOCAL_USER };
   }
-  const r = await res.json();
+  return body;
+}
 
-  // применить входящие
-  let pulled = 0;
-  for (const ch of (r.changes ?? []) as Array<{ kind: string; body: Record<string, unknown> }>) {
-    const body = { ...ch.body };
-    if (ch.kind === PROFILE_KEY) {
-      if (body.userId !== 'local') {
-        // профиль с сервера: единственный локальный пользователь — свой
-        body.userId = 'local';
-        if ((pr?.updatedAt ?? 0) < (body.updatedAt as number)) await db.profiles.put(body as never);
-      }
-      continue;
-    }
-    if (ch.kind === 'achievements' && body.userId === st.userId) body.userId = 'local'; // свои — под локальный фильтр доски
-    if (!(ch.kind in TABLES)) continue;
-    if (PRIVATE_KINDS.has(ch.kind)) body.userId = 'local'; // личное всегда локальный пользователь
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (TABLES[ch.kind as Kind] as any).put(body);
-    pulled++;
+function assertActive(settings: SyncSettings) {
+  const active = loadSync();
+  if (!active || scopeFor(active) !== scopeFor(settings) || active.token !== settings.token) {
+    throw new Error('Подключение изменилось во время синхронизации.');
   }
+}
 
-  // разовая санитария (В., 27.10: «0 достижений»): свои ачивки, приехавшие эхом с серверным uid
-  await db.achievements.where('userId').equals(st.userId).modify({ userId: 'local' }).catch(() => {});
-
-  const nowLocal = Date.now();
-  // Д2+Д5(ревью): since — последняя отданная запись; lastPush — по серверным часам.
-  // Скачок часов сервера (рестарт NAS): serverTime «из будущего» замораживает lastPush выше
-  // локальных updatedAt (записи перестают уезжать), «из прошлого» против сохранённого since —
-  // клиент перестаёт получать. Оба случая детектируем и разматываем (срочный фикс 26.10).
-  const clockAhead = r.serverTime - nowLocal > 5 * 60 * 1000;
-  let since = (typeof r.maxUpdated === 'number' && r.changes?.length) ? r.maxUpdated : r.serverTime;
-  if (st.since > r.serverTime) since = 0;          // серверное время поехало назад — полная перезагрузка
-  // v0.7.17: при усечении пуша lastPush = максимум фактически отправленного (иначе хвост
-  // терялся навсегда); без усечения — серверные часы, как было
-  const truncFloor = [...hitLimit.values()].filter(v => v > 0);
-  const lastPush = clockAhead ? Math.min(st.lastPush, nowLocal)
-    : truncFloor.length ? Math.min(...truncFloor) : Math.max(st.lastPush, r.serverTime);
-  if (clockAhead || since === 0) {
-    (await import('./store')).track('clock_skew', { ahead: clockAhead, serverMinusLocal: r.serverTime - nowLocal });
-  }
-  // v0.4.4: синк-телеметрия (В., 26.10 — «понимать причины недолетов»); уедет попутным синком
-  (await import('./store')).track('sync_result', {
-    force, sent: changes.length, appliedByServer: r.applied ?? 0, rejectedByServer: r.rejected ?? 0,
-    pulled, sinceBefore: st.since, sinceAfter: since, lastPushBefore: st.lastPush, lastPushAfter: lastPush,
-    localPendingBeforeSync: localPending, skewMs: r.serverTime - nowLocal,
-    truncatedTables: hitLimit.size, // v0.7.17: >0 — пуш обрезан лимитом, хвост доедет следующим
+async function exchange(settings: SyncSettings, since: number, cursor: PullCursor,
+                        pending: PendingChange[], events: MetricEvent[], pull: boolean): Promise<SyncResponse> {
+  assertActive(settings);
+  const response = await fetch(trimServer(settings.server) + '/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + settings.token },
+    body: JSON.stringify({
+      since, cursor, pull, client_now: Date.now(),
+      changes: pending.map(({ kind, body, baseUpdated }) => ({ kind, body, baseUpdated })),
+      events: events.map(({ id, ts, name, props }) => ({ id, ts, name, props })),
+    }),
+    signal: AbortSignal.timeout(20000),
   });
-  saveSync({ ...st, since, lastPush, lastOk: nowLocal });
-  return { ok: true, pushed: r.applied ?? changes.length, pulled };
+  if (!response.ok) {
+    throw new Error(response.status === 401 ? 'Сервер не принял ключ подключения.' : `сервер ответил ${response.status}`);
+  }
+  const result = await response.json();
+  if (!Array.isArray(result.changes) || !Number.isSafeInteger(result.serverTime)) {
+    throw new Error('Сервер вернул неполный результат синхронизации.');
+  }
+  assertActive(settings);
+  return result;
 }
 
-/** Полная перезагрузка с сервера (В., 09.11): сначала пушим всё локальное (защита от потери),
- *  потом since=0 и тянем всю базу. Сервер — источник истины для каталога.
- *  ПОСЛЕДСТВИЯ (изучены): (1) несинхронизированные локальные правды теряются — пушим до pull;
- *  (2) локальные tombstone каталога перетираются серверными версиями (удалённые «воскресают»);
- *  (3) объём: ~3100 записей (~2-3 сек); (4) идемпотентно — повтор не ломает. */
-export async function fullReload(): Promise<SyncResult> {
-  // шаг 1: вытолкнуть ВСЁ локальное (широкое окно)
-  const push1 = await runSync(true).catch(() => ({ ok: false, pushed: 0, pulled: 0 }));
-  // шаг 2: обнулить курсор и тянуть всё
-  const st = loadSync();
-  if (st) saveSync({ ...st, since: 0 });
-  const pull = await runSync(false).catch(e => ({ ok: false, pushed: 0, pulled: 0, error: String(e) }));
-  return { ok: pull.ok, pushed: (push1.pushed ?? 0) + (pull.pushed ?? 0), pulled: pull.pulled ?? 0, error: pull.error };
+async function gatherChanges(settings: SyncSettings, modern: boolean, force: boolean) {
+  const scope = scopeFor(settings);
+  const floor = settings.lastPush > Date.now() ? 0
+    : Math.max(0, settings.lastPush - (force ? 7 * 86400000 : 0));
+  return db.transaction('r', [...TABLES, db.syncReceipts, db.events], async () => {
+    const saved = await db.syncReceipts.where('scope').equals(scope).toArray();
+    const receipts = new Map(saved.map(receipt => [receiptKey(receipt.kind, receipt.id), receipt]));
+    const changes: PendingChange[] = [];
+    for (const kind of KINDS) {
+      if (!modern && (kind === 'dayNormas' || kind === 'slotMarks')) continue;
+      for (const row of await tableFor(kind).toArray()) {
+        const id = keyFor(kind, row);
+        const updatedAt = localVersion(kind, row);
+        if (!id || !updatedAt || !ownWritable(kind, row, settings)) continue;
+        if (kind === 'foods' && row.deletedAt && row.delBy !== 'user') continue;
+        const fingerprint = JSON.stringify(row);
+        const receipt = receipts.get(receiptKey(kind, id));
+        if (receipt?.fingerprint === fingerprint || (!modern && !receipt && updatedAt <= floor && kind !== 'profiles')) continue;
+        changes.push({ kind, id, fingerprint, updatedAt, baseUpdated: receipt?.updatedAt, body: { ...row, updatedAt } });
+      }
+    }
+    const events = (await db.events.orderBy('ts').toArray())
+      .filter(event => !receipts.has(receiptKey('events', event.id)));
+    return { changes, events };
+  });
 }
 
-/** авто-синк: при старте и возврате сети, не чаще раза в 5 минут */
+async function recordPush(settings: SyncSettings, result: SyncResponse,
+                          changes: PendingChange[], events: MetricEvent[]): Promise<number> {
+  const scope = scopeFor(settings);
+  const rejects = result.rejected ?? 0;
+  const statuses = result.results;
+  if (statuses && statuses.length !== changes.length) throw new Error('Сервер подтвердил неполную пачку.');
+  const corrections = new Map<string, WireChange>();
+  for (const correction of result.corrections ?? []) {
+    if (!isKind(correction.kind)) continue;
+    const id = keyFor(correction.kind, correction.body);
+    if (id) corrections.set(receiptKey(correction.kind, id), correction);
+  }
+  await db.transaction('rw', [...TABLES, db.syncReceipts], async () => {
+    const receipts: SyncReceipt[] = [];
+    assertActive(settings);
+    for (const [index, change] of changes.entries()) {
+      const status = statuses?.[index];
+      if (statuses ? status !== 'applied' && status !== 'current' : rejects > 0) continue;
+      const correction = corrections.get(receiptKey(change.kind, change.id));
+      let { fingerprint, updatedAt } = change;
+      if (correction) {
+        const table = tableFor(change.kind);
+        const local = await table.get(change.id);
+        if (local && JSON.stringify(local) === fingerprint) {
+          const canonical = normalizeIncoming(correction, settings);
+          await table.put(canonical);
+          fingerprint = JSON.stringify(canonical);
+          updatedAt = correction.updated;
+        } else {
+          updatedAt = change.baseUpdated ?? 0;
+        }
+      }
+      receipts.push({ scope, kind: change.kind, id: change.id, fingerprint, updatedAt });
+    }
+    receipts.push(...events.map(event => ({ scope, kind: 'events', id: event.id, fingerprint: '', updatedAt: event.ts })));
+    await db.syncReceipts.bulkPut(receipts);
+    assertActive(settings);
+  });
+  return result.applied ?? changes.length - rejects;
+}
+
+async function applyPage(settings: SyncSettings, result: SyncResponse): Promise<number> {
+  const scope = scopeFor(settings);
+  return db.transaction('rw', [...TABLES, db.syncReceipts], async () => {
+    assertActive(settings);
+    let written = 0;
+    for (const change of result.changes) {
+      if (!isKind(change.kind)) continue;
+      const kind = change.kind;
+      const body = normalizeIncoming(change, settings);
+      const id = keyFor(kind, body);
+      if (!id) continue;
+      const table = tableFor(kind);
+      const local = await table.get(id);
+      const receipt = await db.syncReceipts.get([scope, kind, id]);
+      if (local && ownWritable(kind, local, settings) && JSON.stringify(local) !== receipt?.fingerprint) {
+        const staleLegacyTombstone = kind === 'foods' && local.deletedAt && local.delBy !== 'user';
+        const legacyAlreadySent = !result.cursor && !receipt && localVersion(kind, local) <= settings.lastPush;
+        if (!staleLegacyTombstone && !legacyAlreadySent) continue;
+      }
+      await table.put(body);
+      await db.syncReceipts.put({ scope, kind, id, fingerprint: JSON.stringify(body), updatedAt: change.updated });
+      written++;
+    }
+    assertActive(settings);
+    return written;
+  });
+}
+
+let syncQueue = Promise.resolve();
+
+function serializedSync(action: () => Promise<SyncResult>): Promise<SyncResult> {
+  const run = syncQueue.then(async () => navigator.locks
+    ? await navigator.locks.request('deepdish-sync', action)
+    : action());
+  syncQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+async function syncOnce(force: boolean, reset: boolean): Promise<SyncResult> {
+  const settings = loadSync();
+  if (!settings) return { ok: false, pushed: 0, pulled: 0, error: 'синхронизация не настроена' };
+  saveSync(settings);
+  const startedAt = Date.now();
+  let since = settings.since, cursor = settings.cursor ?? START_CURSOR;
+  let pushed = 0, pulled = 0, rejected = 0;
+  try {
+    const probe = await exchange(settings, since, cursor, [], [], false);
+    const modern = Boolean(probe.cursor);
+    if (probe.cursor) cursor = probe.cursor;
+    const { changes, events } = await gatherChanges(settings, modern, force);
+    for (let offset = 0, eventOffset = 0; offset < changes.length || eventOffset < events.length;
+         offset += PUSH_SIZE, eventOffset += EVENTS_SIZE) {
+      const batch = changes.slice(offset, offset + PUSH_SIZE);
+      const eventBatch = events.slice(eventOffset, eventOffset + EVENTS_SIZE);
+      const response = await exchange(settings, since, cursor, batch, eventBatch, false);
+      pushed += await recordPush(settings, response, batch, eventBatch);
+      rejected += response.rejected ?? 0;
+    }
+    if (reset && !rejected) {
+      since = 0;
+      cursor = START_CURSOR;
+    }
+
+    let more: boolean;
+    do {
+      const response = await exchange(settings, since, cursor, [], [], true);
+      pulled += await applyPage(settings, response);
+      const nextSince = response.maxUpdated ?? response.serverTime;
+      const nextCursor = response.cursor ?? START_CURSOR;
+      more = response.hasMore ?? (response.changes.length >= LEGACY_PULL_SIZE && nextSince < response.serverTime);
+      const stalled = response.cursor ? JSON.stringify(nextCursor) === JSON.stringify(cursor) : nextSince === since;
+      if (more && stalled) throw new Error('Сервер не смог продолжить выдачу записей.');
+      since = nextSince;
+      cursor = nextCursor;
+      assertActive(settings);
+      saveSync({ ...settings, since, cursor: response.cursor });
+    } while (more);
+
+    const now = Date.now();
+    const lastPush = rejected ? settings.lastPush : Math.max(0, Math.min(now, startedAt) - 1);
+    const current = loadSync()!;
+    saveSync({ ...current, lastPush, lastOk: rejected ? settings.lastOk : now });
+    track('sync_result', { pushed, pulled, rejected, rejectedByServer: rejected,
+      sent: changes.length, localPendingBeforeSync: changes.length, skewMs: probe.serverTime - startedAt });
+    return { ok: !rejected, pushed, pulled, error: rejected ? `сервер отклонил записей: ${rejected}. Они остались на устройстве.` : undefined };
+  } catch (error) {
+    const message = (error as Error).message;
+    track('sync_fail', { msg: message.slice(0, 90), since });
+    return { ok: false, pushed, pulled, error: message };
+  }
+}
+
+export function runSync(force = false): Promise<SyncResult> {
+  return serializedSync(() => syncOnce(force, false));
+}
+
+export function fullReload(): Promise<SyncResult> {
+  return serializedSync(() => syncOnce(true, true));
+}
+
 let lastAuto = 0;
-export function autoSync() {
-  const st = loadSync();
-  if (!st || !navigator.onLine) return;
+export function autoSync(reconnected = false) {
+  if (!loadSync() || !navigator.onLine || document.visibilityState === 'hidden') return;
   const now = Date.now();
-  const firstToday = !st.lastOk || new Date(st.lastOk).toDateString() !== new Date().toDateString();
-  if (!firstToday && now - lastAuto < 5 * 60 * 1000) return; // но первый запуск за день — всегда
+  if (!reconnected && now - lastAuto < AUTO_INTERVAL && now >= lastAuto) return;
   lastAuto = now;
-  runSync().catch(() => { /* тихо: повторится при следующем триггере */ });
+  void runSync().catch(() => {});
 }
 
-export function syncStatusText(): string {
-  const st = loadSync();
-  if (!st) return 'не настроен';
-  if (!st.lastOk) return `${st.nickname} (${st.role}) · синхронизации ещё не было`;
-  const d = new Date(st.lastOk);
-  const p = (n: number) => String(n).padStart(2, '0');
-  const today = new Date().toDateString() === d.toDateString();
-  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
-  return today ? `${st.nickname} · обновлено сегодня в ${hm}` : `${st.nickname} · обновлено ${p(d.getDate())}.${p(d.getMonth() + 1)} в ${hm}`;
+export function syncStatusText(settings = loadSync()): string {
+  if (!settings) return 'Синхронизация не настроена';
+  if (!settings.lastOk) return `${settings.nickname} · синхронизации ещё не было`;
+  const date = new Date(settings.lastOk);
+  const h = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return date.toDateString() === new Date().toDateString()
+    ? `${settings.nickname} · обновлено сегодня в ${h}`
+    : `${settings.nickname} · обновлено ${date.toLocaleDateString('ru-RU')} в ${h}`;
 }

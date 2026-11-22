@@ -1,23 +1,77 @@
-name: Build and publish
+name: Check, build and publish
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  publish:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Keep runtime data out of Git
+        run: |
+          if [ -n "$(git ls-files -- backend/data backend/.backup-staging)" ]; then
+            echo 'Runtime data or backup staging is tracked in Git.' >&2
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
       - run: npm ci
+      - run: npm test
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python -m unittest discover -s backend -p 'test_*.py'
+      - name: Check Apple Health API with synthetic data
+        run: |
+          health_dir=$(mktemp -d "$RUNNER_TEMP/deepdish-health.XXXXXX")
+          export DD_DB="$health_dir/deepdish.db"
+          export DD_BACKUP_DIR="$health_dir/backups"
+          export DD_BACKUP_STAGING_DIR="$health_dir/staging"
+          python -m uvicorn --app-dir backend server:app --host 127.0.0.1 --port 8689 --no-access-log &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 \
+            http://127.0.0.1:8689/healthz >/dev/null
+          python tools/health_smoke.py http://127.0.0.1:8689
       - run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: pages-dist
+          path: dist/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  publish:
+    if: github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pages-dist
+          path: dist/
       # Публикация: собранный dist -> ветка deploy (GitHub Pages читает её корень)
       - name: Deploy dist to branch `deploy`
         env:

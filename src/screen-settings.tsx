@@ -5,7 +5,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import type { Slot } from './db';
 import { PALETTES, type DeviceSettings, todayISO } from './lib';
-import { exportJSON, exportCSV, download, wipeAll, track, importJSONText } from './store';
+import { track } from './store';
+import { exportJSON, exportCSV, download, wipeAll, importJSONText } from './data-transfer';
 import { Segmented, Confirm, Modal, TopSheet } from './ui';
 import { HelpSheet } from './help';
 
@@ -23,15 +24,22 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
   };
   // импорт JSON (перенос каталога между устройствами)
   const fileJson = useRef<HTMLInputElement>(null);
+  const importMode = useRef<'catalog' | 'archive'>('archive');
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importErr, setImportErr] = useState(false);
+  const [wipeBusy, setWipeBusy] = useState(false);
+
+  function chooseImport(mode: 'catalog' | 'archive') {
+    importMode.current = mode;
+    fileJson.current?.click();
+  }
 
   async function onJsonFile(f: File) {
     try {
-      const counts = await importJSONText(await f.text());
+      const counts = await importJSONText(await f.text(), importMode.current);
       const parts = Object.entries(counts).map(([k, v]) => `${v} ${k === 'entries' ? 'записей' : k === 'foods' ? 'продуктов' : k}`);
       setImportErr(false);
-      setImportMsg(`Загружено: ${parts.join(', ') || 'файл пуст'}.`);
+      setImportMsg(parts.length ? `Загружено: ${parts.join(', ')}.` : 'Нет записей для обновления.');
     } catch (e) { setImportErr(true); setImportMsg(`Импорт не удался: ${(e as Error).message}.`); }
   }
 
@@ -73,7 +81,7 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
             <div className="text-sm">{s.emoji} {s.name}</div>
             {s.defaultTime
               ? <div className="flex items-center gap-1">
-                  <input type="time" className="dd-input dd-num" style={{ width: 110, padding: '8px 10px' }} value={s.defaultTime}
+                  <input type="time" aria-label={'Время · ' + s.name} className="dd-input dd-num" style={{ width: 110, padding: '8px 10px' }} value={s.defaultTime}
                     onChange={e => db.slots.update(s.id, { defaultTime: e.target.value, updatedAt: Date.now() })} />
                   <button className="dd-link-btn" title="Время будет подставляться в момент записи"
                     onClick={() => db.slots.update(s.id, { defaultTime: null, updatedAt: Date.now() })}>авто</button>
@@ -89,23 +97,25 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
 
       <div className="dd-card px-4 py-1 mb-4">
         <Row label="Как пользоваться" hint="короткая справка по экранам"
-          action={<button className="dd-link-btn" onClick={() => setHelpOpen(true)}>→</button>} />
+          action={<button className="dd-link-btn" aria-label="Открыть справку" onClick={() => setHelpOpen(true)}>→</button>} />
       </div>
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Данные</div>
-        <Row label="Экспорт JSON (полный бэкап)" hint="все данные одной кнопкой"
-          action={<button className="dd-link-btn" onClick={() => exportJSON().then(b => download(b, `deepdish-${todayISO()}.json`))}>→</button>} />
-        <Row label="Экспорт CSV (еда)" hint="для Excel"
-          action={<button className="dd-link-btn" onClick={() => exportCSV().then(b => download(b, `deepdish-eda-${todayISO()}.csv`))}>→</button>} />
-        <Row label="Импорт JSON (перенос каталога)" hint="с другого устройства или от агента"
-          action={<button className="dd-link-btn" onClick={() => fileJson.current?.click()}>→</button>} />
+        <Row label="Экспорт архива JSON" hint="дневник, каталог, вес, профиль и нормы"
+          action={<button className="dd-link-btn" aria-label="Скачать архив JSON" onClick={() => exportJSON().then(b => download(b, `deepdish-${todayISO()}.json`))}>→</button>} />
+        <Row label="Экспорт дневника CSV" hint="записи еды для Excel"
+          action={<button className="dd-link-btn" aria-label="Скачать дневник CSV" onClick={() => exportCSV().then(b => download(b, `deepdish-eda-${todayISO()}.csv`))}>→</button>} />
+        <Row label="Импорт архива JSON" hint="объединяет архив с дневником, сохраняя более свежие записи"
+          action={<button className="dd-link-btn" aria-label="Импортировать архив JSON" onClick={() => chooseImport('archive')}>→</button>} />
+        <Row label="Импорт каталога JSON" hint="загружает продукты и рецепты"
+          action={<button className="dd-link-btn" aria-label="Импортировать каталог JSON" onClick={() => chooseImport('catalog')}>→</button>} />
         <input ref={fileJson} type="file" accept=".json,application/json" hidden
           onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onJsonFile(f); }} />
         <Row label="Пройти онбординг заново" hint="как пользоваться + установка"
-          action={<button className="dd-link-btn" onClick={onRestartOnboarding}>→</button>} />
-        <Row label="Удалить все данные" hint="дневник, каталог, профиль — без возврата"
-          action={<button className="dd-link-btn" style={{ color: 'var(--warn)' }} onClick={() => setConfirmWipe(true)}>→</button>} />
+          action={<button className="dd-link-btn" aria-label="Пройти онбординг заново" onClick={onRestartOnboarding}>→</button>} />
+        <Row label="Очистить дневник на устройстве" hint="удаляет локальный дневник и отключает семейный обмен"
+          action={<button className="dd-link-btn" aria-label="Очистить дневник на устройстве" disabled={wipeBusy} style={{ color: 'var(--warn)' }} onClick={() => setConfirmWipe(true)}>→</button>} />
       </div>
 
       <p className="text-[0.625rem] mt-6 text-center" style={{ color: 'var(--mut)' }}>
@@ -135,9 +145,14 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
         </div>
       </Modal>
 
-      <Confirm open={confirmWipe} text="Точно удалить ВСЁ? Дневник, каталог и профиль исчезнут безвозвратно."
-        okLabel="Удалить всё" onCancel={() => setConfirmWipe(false)}
-        onOk={async () => { setConfirmWipe(false); await wipeAll(); location.reload(); }} />
+      <Confirm open={confirmWipe} text="Очистить дневник на этом устройстве? Записи, которые не успели синхронизироваться, можно сохранить заранее в архиве JSON. Данные на семейном сервере сохранятся."
+        okLabel="Очистить устройство" onCancel={() => setConfirmWipe(false)}
+        onOk={async () => {
+          setConfirmWipe(false); setWipeBusy(true);
+          try { await wipeAll(); location.reload(); }
+          catch { setImportErr(true); setImportMsg('Не удалось очистить дневник. Попробуйте ещё раз.'); }
+          finally { setWipeBusy(false); }
+        }} />
     </div>
   );
 }

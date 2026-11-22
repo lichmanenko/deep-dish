@@ -223,11 +223,11 @@ export function ProfileScreen() {
         <div className="dd-field-label" style={{ marginTop: 12 }}>Мотивация и поддержка</div>
         <div className="flex justify-between items-center py-3">
           <div className="text-sm">Подсказки и поддержка</div>
-          <Toggle on={flags.praise || flags.warn} onChange={v => { const f = { ...flags, praise: v, warn: v }; setFlags(f); saveFlags(f); }} />
+          <Toggle label="Мотивационные баннеры" on={flags.praise || flags.warn} onChange={v => { const f = { ...flags, praise: v, warn: v }; setFlags(f); saveFlags(f); }} />
         </div>
         <div className="flex justify-between items-center pb-3">
           <div className="text-sm">Факты и достижения</div>
-          <Toggle on={factsOn} onChange={toggleFacts} />
+          <Toggle label="Факты и достижения" on={factsOn} onChange={toggleFacts} />
         </div>
         <div className="pb-3">
           <button className="dd-link-btn" style={{ padding: '6px 0' }} onClick={() => setFlagsOpen(!flagsOpen)}>

@@ -14,7 +14,7 @@ export interface Palette { key: string; name: string; light: PaletteTokens; dark
 
 const G = (o: Partial<PaletteTokens>): PaletteTokens => ({
   bg: '#F7F9FB', bg2: '#E7EDF3', bg3: '#DCE6EF', panel: '#F1F4F8', glass: 'rgba(255,255,255,.60)',
-  glassStrong: 'rgba(255,255,255,.78)', tx: '#1B2026', mut: '#8B929C', acc: '#44748F',
+  glassStrong: 'rgba(255,255,255,.78)', tx: '#1B2026', mut: '#57636E', acc: '#44748F',
   acc2: '#6E9BBB', accFg: '#3A647B', tr: 'rgba(27,32,38,.07)', ok: '#3F9B6C',
   warn: '#C0523C', veil: 'rgba(68,116,143,.10)', r1: 'rgba(68,116,143,.12)',
   r2: 'rgba(110,155,187,.10)', ...o,
@@ -54,7 +54,7 @@ export function applyTheme(paletteKey: string, dark: boolean, textScale = 1) {
   const pal = PALETTES.find(p => p.key === paletteKey) ?? PALETTES[0];
   const t = dark ? pal.dark : pal.light;
   const root = document.documentElement;
-  (Object.keys(t) as Array<keyof PaletteTokens>).forEach(k => root.style.setProperty(`--${k}`, t[k]));
+  (Object.keys(t) as Array<keyof PaletteTokens>).forEach(k => root.style.setProperty(k === 'accFg' ? '--acc-fg' : `--${k}`, t[k]));
   root.classList.toggle('dark', dark);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', dark ? pal.dark.bg : pal.light.bg);
@@ -191,6 +191,13 @@ export function kbjuSuspicious(kcal: number, p: number, f: number, c: number, na
 }
 
 export const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
+
+export function parseQuantity(text: string): number {
+  const normalized = text.trim().replace(',', '.');
+  if (!/^(?:\d+\.?\d*|\.\d+)$/.test(normalized)) return 0;
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : 0;
+}
 /** дробное количество порций: 0,5 / 1 / 1,25 */
 export const fmtQty = (n: number) => (Math.round(n * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 export const rnd = (n: number) => Math.round(n);

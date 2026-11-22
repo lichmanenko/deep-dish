@@ -1,6 +1,7 @@
 # Deep Dish sync server: FastAPI + SQLite (WAL), один эндпоинт обмена POST /sync.
 # Спецификация — SPEC.md §4–5: LWW по updatedAt, tombstone-удаления (очистка >90 дней),
 # дневники приватные (фильтр по userId), каталог общий (isPublic), события метрик попутно.
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -11,13 +12,14 @@ import time
 import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, Iterator
+from datetime import date as calendar_date, datetime
+from typing import Annotated, Any, Iterator
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlite_backups import BackupManager, configured_paths, configuration
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 DB_PATH = os.path.abspath(os.environ.get('DD_DB', os.path.join(os.path.dirname(__file__), 'data', 'deepdish.db')))
 TOMBSTONE_TTL_DAYS = 90
@@ -49,11 +51,13 @@ async def lifespan(app: FastAPI):
 
 # kinds: общий каталог vs личные данные
 PUBLIC_KINDS = {'foods', 'recipes'}
-PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slots', 'savedMeals', 'profiles'}
+PRIVATE_KINDS = {'entries', 'weightLogs', 'dayNormas', 'slotMarks', 'slots', 'savedMeals', 'profiles'}
 FAMILY_KINDS = {'achievements'}  # v0.7.6: публичные записи семьи (достижения — факт известен всем)
 ALL_KINDS = PUBLIC_KINDS | PRIVATE_KINDS | FAMILY_KINDS
+SYNC_PAGE_SIZE = 5000
+INVITE_LIFETIME_MS = 15 * 60 * 1000
 
-app = FastAPI(title='Deep Dish sync', version='0.4.7', lifespan=lifespan)
+app = FastAPI(title='Deep Dish sync', version='0.4.9', lifespan=lifespan)
 # PWA живёт на GitHub Pages, сервер — дома: доступ управляется токеном, origins открыты
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
@@ -73,49 +77,50 @@ def db() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def _meta_ready(c: sqlite3.Connection) -> bool:
-    try:
-        c.execute("SELECT 1 FROM _meta LIMIT 1")
-        return True
-    except sqlite3.OperationalError:
-        return False
+def create_items_table(c: sqlite3.Connection) -> None:
+    c.execute("""CREATE TABLE IF NOT EXISTS items (
+        kind TEXT NOT NULL, id TEXT NOT NULL, owner TEXT NOT NULL,
+        updated INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, body TEXT NOT NULL,
+        applied INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (kind, id, owner))""")
 
 
 def init_db() -> None:
     with db() as c:
-        c.execute('''CREATE TABLE IF NOT EXISTS users (
+        c.execute('BEGIN IMMEDIATE')
+        c.execute("""CREATE TABLE IF NOT EXISTS users (
             userId TEXT PRIMARY KEY, nickname TEXT NOT NULL, token TEXT UNIQUE NOT NULL,
-            role TEXT NOT NULL DEFAULT 'member', createdAt INTEGER NOT NULL)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS items (
-            kind TEXT NOT NULL, id TEXT NOT NULL, owner TEXT NOT NULL,
-            updated INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, body TEXT NOT NULL,
-            PRIMARY KEY (kind, id))''')
+            role TEXT NOT NULL DEFAULT 'member', createdAt INTEGER NOT NULL, healthCode TEXT)""")
+        create_items_table(c)
+        cols = {r['name']: r['pk'] for r in c.execute('PRAGMA table_info(items)')}
+        if not cols['owner']:
+            # SQLite cannot extend a primary key in place. Keep the stored IDs and JSON bodies.
+            old_applied = 'applied' if 'applied' in cols else 'updated'
+            c.execute('ALTER TABLE items RENAME TO items_before_owner_scope')
+            create_items_table(c)
+            c.execute(f"""INSERT INTO items (kind, id, owner, updated, deleted, body, applied)
+                          SELECT kind, id, owner, updated, deleted, body, {old_applied}
+                          FROM items_before_owner_scope""")
+            c.execute('DROP TABLE items_before_owner_scope')
         c.execute('CREATE INDEX IF NOT EXISTS idx_items_updated ON items (kind, updated)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_items_owner ON items (owner, kind, updated)')
-        # v0.4.2 (срочный фикс «кексов», В., 26.10): серверное время применения — единственная
-        # мера новизны в выдаче; клиентские updatedAt пригодны только для LWW (телефонные часы врут)
-        cols = [r['name'] for r in c.execute("PRAGMA table_info(items)")]
-        if 'applied' not in cols:
-            c.execute("ALTER TABLE items ADD COLUMN applied INTEGER NOT NULL DEFAULT 0")
-            c.execute("UPDATE items SET applied = updated")
-        # v0.4.3 (инцидент «кексы», финал): applied старых записей мог «запечататься» клиентскими
-        # часами из updated — получатели с более поздним курсором никогда не увидят их. Один раз
-        # при старте: всем существующим записям свежий applied → ближайший синк каждого клиента
-        # получит полную базу (идемпотентные put по id), дальше курсор живёт по серверным часам.
-        mark = c.execute("SELECT v FROM _meta WHERE k = 'applied_refresh'").fetchone() if _meta_ready(c) else None
-        if not mark or mark['v'] != '2':  # v0.4.5: повторная перезаморозка (дедуп-инцидент 09.11)
+        c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_items_shared_id ON items (kind, id)
+                     WHERE kind IN ('foods','recipes','achievements','offcache')""")
+        c.execute('CREATE TABLE IF NOT EXISTS _meta (k TEXT PRIMARY KEY, v TEXT)')
+        mark = c.execute("SELECT v FROM _meta WHERE k = 'applied_refresh'").fetchone()
+        if not mark or mark['v'] != '2':
             c.execute("UPDATE items SET applied = ? WHERE kind != 'offcache'", (int(time.time() * 1000),))
-            c.execute("CREATE TABLE IF NOT EXISTS _meta (k TEXT PRIMARY KEY, v TEXT)")
             c.execute("INSERT OR REPLACE INTO _meta (k, v) VALUES ('applied_refresh', '2')")
-        c.execute('CREATE INDEX IF NOT EXISTS idx_items_applied ON items (applied)')
-        c.execute('''CREATE TABLE IF NOT EXISTS events (
+        c.execute('CREATE INDEX IF NOT EXISTS idx_items_cursor ON items (applied, kind, id, owner)')
+        c.execute("""INSERT OR IGNORE INTO _meta (k, v)
+                     SELECT 'sync_stamp', CAST(COALESCE(MAX(applied), 0) AS TEXT)
+                     FROM items WHERE kind != 'offcache'""")
+        c.execute("""CREATE TABLE IF NOT EXISTS events (
             id TEXT PRIMARY KEY, userId TEXT NOT NULL, ts INTEGER NOT NULL,
-            name TEXT NOT NULL, props TEXT NOT NULL)''')
-        # мост Apple Health (M3): короткий код вместо длинного токена в шорткате
-        try:
+            name TEXT NOT NULL, props TEXT NOT NULL)""")
+        c.execute('''CREATE TABLE IF NOT EXISTS invites (
+            codeHash TEXT PRIMARY KEY, expiresAt INTEGER NOT NULL)''')
+        if not any(row['name'] == 'healthCode' for row in c.execute('PRAGMA table_info(users)')):
             c.execute('ALTER TABLE users ADD COLUMN healthCode TEXT')
-        except sqlite3.OperationalError:
-            pass  # колонка уже есть
 
 
 init_db()
@@ -123,6 +128,18 @@ init_db()
 
 def now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def sync_stamp(c: sqlite3.Connection) -> int:
+    previous = c.execute("SELECT v FROM _meta WHERE k = 'sync_stamp'").fetchone()
+    return int(previous['v'])
+
+
+def advance_sync_stamp(c: sqlite3.Connection, previous: int, wall_time: int) -> int:
+    """Call while holding a write transaction so later writers sort after this exchange."""
+    stamp = max(wall_time, previous + 1)
+    c.execute("UPDATE _meta SET v = ? WHERE k = 'sync_stamp'", (str(stamp),))
+    return stamp
 
 
 def auth(authorization: str = Header(default='')) -> sqlite3.Row:
@@ -139,17 +156,28 @@ def auth(authorization: str = Header(default='')) -> sqlite3.Row:
 class RegisterIn(BaseModel):
     nickname: str
     adminToken: str | None = None
+    inviteCode: str | None = None
 
 
 class Change(BaseModel):
     kind: str
     body: dict[str, Any]
+    baseUpdated: int | None = Field(default=None, ge=0, le=2**53 - 1)
+
+
+class PullCursor(BaseModel):
+    applied: int = Field(default=0, ge=0, le=2**53 - 1)
+    kind: str = ''
+    id: str = ''
+    owner: str = ''
 
 
 class SyncIn(BaseModel):
-    since: int = 0
-    changes: list[Change] = []
-    events: list[dict[str, Any]] = []
+    since: int = Field(default=0, ge=0, le=2**53 - 1)
+    cursor: PullCursor | None = None
+    pull: bool = True
+    changes: list[Change] = Field(default_factory=list)
+    events: list[dict[str, Any]] = Field(default_factory=list)
     client_now: int = 0  # часы устройства (телеметрия skew, v0.4.4)
 
 
@@ -172,18 +200,38 @@ def register(payload: RegisterIn) -> dict[str, Any]:
     user_id = secrets.token_hex(8)
     token = secrets.token_urlsafe(24)
     with db() as c:
+        c.execute('BEGIN IMMEDIATE')
         n = c.execute('SELECT COUNT(*) AS n FROM users').fetchone()['n']
         role = 'admin' if n == 0 else 'member'  # первый зарегистрировавшийся — admin
-        if role == 'member' and not payload.adminToken:
-            raise HTTPException(403, 'регистрацию новых участников включает администратор (adminToken)')
         if role == 'member':
-            admin = c.execute("SELECT * FROM users WHERE token = ? AND role = 'admin'", (payload.adminToken,)).fetchone()
-            if not admin:
-                raise HTTPException(403, 'adminToken не опознан')
+            if payload.inviteCode:
+                digest = hashlib.sha256(payload.inviteCode.strip().encode()).hexdigest()
+                used = c.execute('DELETE FROM invites WHERE codeHash = ? AND expiresAt > ?', (digest, now_ms()))
+                if used.rowcount != 1:
+                    raise HTTPException(403, 'Код приглашения недействителен или уже использован.')
+            else:
+                # Older installed clients still send adminToken during the transition.
+                admin = c.execute("SELECT 1 FROM users WHERE token = ? AND role = 'admin'", (payload.adminToken,)).fetchone()
+                if not admin:
+                    raise HTTPException(403, 'Для подключения нужен код приглашения администратора.')
         c.execute('INSERT INTO users (userId, nickname, token, role, createdAt) VALUES (?,?,?,?,?)',
                   (user_id, nickname, token, role, now_ms()))
     log.info('register nick=%s role=%s', nickname, role)
     return {'userId': user_id, 'token': token, 'role': role}
+
+
+@app.post('/admin/invite')
+def create_invite(user: sqlite3.Row = Depends(auth)) -> JSONResponse:
+    if user['role'] != 'admin':
+        raise HTTPException(403, 'только администратор')
+    code = secrets.token_urlsafe(24)
+    digest = hashlib.sha256(code.encode()).hexdigest()
+    now = now_ms()
+    expiry = now + INVITE_LIFETIME_MS
+    with db() as c:
+        c.execute('DELETE FROM invites WHERE expiresAt <= ?', (now,))
+        c.execute('INSERT INTO invites (codeHash, expiresAt) VALUES (?, ?)', (digest, expiry))
+    return JSONResponse({'code': code, 'expiresAt': expiry}, headers={'Cache-Control': 'no-store'})
 
 
 @app.get('/admin/users')
@@ -219,10 +267,14 @@ def admin_metrics(days: int = 30, user: sqlite3.Row = Depends(auth)) -> dict[str
             u = by_user.setdefault(e['userId'], {})
             u[e['name']] = u.get(e['name'], 0) + 1
             if e['name'] == 'app_open':
-                p_ = (e['props'] or '{}')
-                if '"online":true' in p_ or '"online": True' in p_:
+                try:
+                    props = json.loads(e['props'] or '{}')
+                except (TypeError, ValueError):
+                    continue
+                online = props.get('online') if isinstance(props, dict) else None
+                if online is True:
                     online_t += 1
-                elif '"online":false' in p_:
+                elif online is False:
                     online_f += 1
             if e['name'] == 'banner_shown':
                 banner_shown += 1
@@ -331,9 +383,10 @@ def admin_push_catalog(user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
     получат свежий каталог при следующем синке (В., 09.11: «отправить каталог всем»)."""
     if user['role'] != 'admin':
         raise HTTPException(403, 'только администратор')
-    now = now_ms()
     with db() as c:
-        cur = c.execute("UPDATE items SET applied = ? WHERE kind IN ('foods','recipes') AND deleted = 0", (now,))
+        c.execute('BEGIN IMMEDIATE')
+        stamp = advance_sync_stamp(c, sync_stamp(c), now_ms())
+        cur = c.execute("UPDATE items SET applied = ? WHERE kind IN ('foods','recipes') AND deleted = 0", (stamp,))
         n = cur.rowcount
         log.info('push_catalog user=%s nick=%s applied_refreshed=%d', user['userId'], user['nickname'], n)
     return {'ok': True, 'applied': n}
@@ -404,7 +457,7 @@ def off_search(q: str, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
             hits = ru_ean  # российская выдача; если пусто — оставляем кириллическую как есть
     payload = {'products': hits}
     with db() as c:
-        c.execute('INSERT INTO items (kind, id, owner, updated, deleted, body) VALUES (?,?,?,?,?,?) ON CONFLICT (kind, id) DO UPDATE SET updated = excluded.updated, body = excluded.body',
+        c.execute('INSERT INTO items (kind, id, owner, updated, deleted, body) VALUES (?,?,?,?,?,?) ON CONFLICT DO UPDATE SET updated = excluded.updated, body = excluded.body',
                   ('offcache', cache_key, user['userId'], now_ms(), 0,
                    json.dumps({'ts': now_ms(), 'payload': payload}, ensure_ascii=False)))
     return payload
@@ -421,7 +474,7 @@ def deleted_flag(r: sqlite3.Row) -> bool:
 def auth_code(code: str) -> sqlite3.Row:
     code = (code or '').strip().upper()
     if not code:
-        raise HTTPException(401, 'нужен код моста: ?code=...')
+        raise HTTPException(401, 'нужен код моста')
     with db() as c:
         u = c.execute('SELECT * FROM users WHERE healthCode = ?', (code,)).fetchone()
     if not u:
@@ -437,6 +490,7 @@ class CodeIn(BaseModel):
 def health_code(payload: CodeIn | None = None, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
     reset = bool(payload and payload.reset)
     with db() as c:
+        c.execute('BEGIN IMMEDIATE')
         cur = c.execute('SELECT healthCode FROM users WHERE userId = ?', (user['userId'],)).fetchone()['healthCode']
         if reset or not cur:
             for _ in range(5):
@@ -505,73 +559,121 @@ def parse_date_flex(raw: Any) -> str | None:
 class HealthWeightIn(BaseModel):
     date: Any   # всеядно: ISO, «25.10.2026, 10:15», «25 октября 2026 г. …», epoch (мини-мост v2)
     kg: float
+    measuredAt: datetime | None = None
+
+
+HealthCodeHeader = Annotated[str | None, Header(alias='X-DeepDish-Health-Code')]
+
+
+def measurement_order(item: HealthWeightIn) -> int | None:
+    stamp = item.measuredAt
+    if stamp is None and isinstance(item.date, str):
+        try:
+            stamp = datetime.fromisoformat(item.date.strip())
+        except ValueError:
+            return None
+    if stamp is None or stamp.utcoffset() is None:
+        return None
+    return int(stamp.timestamp() * 1000)
 
 
 @app.post('/health/weight')
-def health_weight(items: list[HealthWeightIn], code: str = '') -> dict[str, Any]:
-    """шорткат присылает взвешивания пачкой (например, за 7 дней); повтор — обновление, не дубль"""
-    u = auth_code(code)
-    import re as _re
-    now = now_ms()
-    server_now = now  # v0.4.2: applied-время мостовых записей (выдача по серверным часам)
+def health_weight(items: HealthWeightIn | list[HealthWeightIn], code: str = '',
+                  health_code_header: HealthCodeHeader = None) -> dict[str, Any]:
+    """Принимает один образец Shortcuts или пачку. За день хранится одно взвешивание."""
+    u = auth_code(health_code_header if health_code_header is not None else code)
+    uid = u['userId']
+    samples = [items] if isinstance(items, HealthWeightIn) else items
+    skipped = []
+    by_day: dict[str, tuple[float, int | None]] = {}
+    for item in samples:
+        day = parse_date_flex(item.date)
+        try:
+            if day is None:
+                raise ValueError('missing date')
+            calendar_date.fromisoformat(day)
+        except ValueError:
+            skipped.append('invalid_date')
+            continue
+        if not 25 <= item.kg <= 350:
+            skipped.append('invalid_weight')
+            continue
+        measured = measurement_order(item)
+        previous = by_day.get(day)
+        if previous is None or previous[1] is None or (measured is not None and measured >= previous[1]):
+            by_day[day] = (round(item.kg, 2), measured)
+
     applied = 0
     with db() as c:
-        skipped = []
-        for it in items:
-            d = parse_date_flex(it.date)
-            if not d or not (25 <= it.kg <= 350):
-                skipped.append(str(it.date)[:40])
+        c.execute('BEGIN IMMEDIATE')
+        now = now_ms()
+        stamp = advance_sync_stamp(c, sync_stamp(c), now)
+        for day, (kg, measured) in by_day.items():
+            iid = f'hw-{uid}-{day}'
+            old = c.execute("SELECT body, updated, deleted FROM items WHERE kind='weightLogs' AND id=? AND owner=?",
+                            (iid, uid)).fetchone()
+            stored = json.loads(old['body']) if old else {}
+            old_measurement = stored.get('bridgeMeasuredAt')
+            if old_measurement is not None and (measured is None or measured < old_measurement):
                 continue
-            iid = "hw-" + u['userId'] + "-" + d
-            body = json.dumps({'id': iid, 'userId': u['userId'], 'date': d,
-                               'weightKg': round(it.kg, 2), 'bodyFatPct': None,
-                               'createdAt': now, 'updatedAt': now, 'deletedAt': None},
-                              ensure_ascii=False)
-            # Е1(ревью-2): повторная посылка воскрешает запись (deleted = 0)
+            if (old and not old['deleted'] and stored.get('weightKg') == kg
+                    and old_measurement == measured and stored.get('source') == 'health'):
+                continue
+            updated = max(now, old['updated'] + 1) if old else now
+            body = {'id': iid, 'userId': uid, 'date': day, 'weightKg': kg, 'bodyFatPct': None,
+                    'source': 'health', 'bridgeMeasuredAt': measured, 'createdAt': stored.get('createdAt', now),
+                    'updatedAt': updated, 'deletedAt': None}
             c.execute("INSERT INTO items (kind, id, owner, updated, deleted, body, applied) "
                       "VALUES ('weightLogs', ?, ?, ?, 0, ?, ?) "
-                      "ON CONFLICT(kind, id) DO UPDATE SET updated = excluded.updated, deleted = 0, body = excluded.body, applied = excluded.applied",
-                      (iid, u['userId'], now, body, server_now))
+                      "ON CONFLICT(kind, id, owner) DO UPDATE SET updated = excluded.updated, deleted = 0, body = excluded.body, applied = excluded.applied",
+                      (iid, uid, updated, json.dumps(body, ensure_ascii=False), stamp))
             applied += 1
-        # Е6(ревью-2): дедуп одним проходом — ручные записи пришедших дат уходят в tombstone
-        dates = {d for it in items
-                 if (d := parse_date_flex(it.date)) and 25 <= it.kg <= 350}
-        own = {'hw-' + u['userId'] + '-' + d for d in dates}
-        for r in c.execute("SELECT id, body FROM items WHERE kind = 'weightLogs' AND owner = ? AND deleted = 0",
-                           (u['userId'],)).fetchall():
-            if r['id'] in own:
-                continue  # сами мостовые записи этой пачки
-            if json.loads(r['body']).get('date') in dates:
-                c.execute('UPDATE items SET deleted = ? WHERE kind = ? AND id = ?', (now, 'weightLogs', r['id']))
-    log.info('health_weight user=%s nick=%s applied=%d skipped=%s', u['userId'], u['nickname'], applied, skipped)
+
+        if by_day:
+            # Старый мост записывал в deleted время замены без продвижения applied.
+            # Переиздаём такие отметки один раз для дат, полученных от Health.
+            rows = c.execute("SELECT id, body, updated FROM items WHERE kind='weightLogs' AND owner=? AND deleted != 1",
+                             (uid,)).fetchall()
+            for row in rows:
+                body = json.loads(row['body'])
+                day = body.get('date')
+                if day not in by_day or row['id'] == f'hw-{uid}-{day}':
+                    continue
+                updated = max(now, row['updated'] + 1)
+                body.update(deletedAt=updated, updatedAt=updated)
+                c.execute("UPDATE items SET deleted=1, updated=?, body=?, applied=? WHERE kind='weightLogs' AND id=? AND owner=?",
+                          (updated, json.dumps(body, ensure_ascii=False), stamp, row['id'], uid))
+    log.info('health_weight applied=%d skipped=%d', applied, len(skipped))
     return {'ok': True, 'applied': applied, 'skipped': skipped}
 
 
 @app.get('/health/day')
-def health_day(date: str = '', code: str = '') -> dict[str, Any]:
+def health_day(date: str = '', code: str = '', health_code_header: HealthCodeHeader = None) -> JSONResponse:
     """итог калорий пользователя за дату — шорткат пишет его в Health (Dietary Energy)"""
-    u = auth_code(code)
-    import datetime as _dt
-    date = parse_date_flex(date) or _dt.date.today().isoformat()
+    u = auth_code(health_code_header if health_code_header is not None else code)
+    day = parse_date_flex(date) if date else calendar_date.today().isoformat()
+    try:
+        if day is None:
+            raise ValueError('missing date')
+        calendar_date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(422, 'нужна календарная дата в формате YYYY-MM-DD') from None
     kcal = 0.0
     with db() as c:
         rows = c.execute("SELECT body FROM items WHERE kind = 'entries' AND owner = ? AND deleted = 0",
                          (u['userId'],)).fetchall()
         for r in rows:
             b = json.loads(r['body'])
-            if b.get('date') == date and not b.get('deletedAt'):
+            if b.get('date') == day and not b.get('deletedAt'):
                 kcal += (b.get('snapshot') or {}).get('kcal', 0)
-    return {'date': date, 'kcal': round(kcal)}
+    return JSONResponse({'date': day, 'kcal': round(kcal)}, headers={'Cache-Control': 'no-store'})
 
 
 
 # ── мини-мост v2: страница-помощник сборки шортката ──────────────────────────
-from fastapi.responses import HTMLResponse
-
-
 @app.get('/health/setup', response_class=HTMLResponse)
 def health_setup() -> str:
-    """Страница для сборки шортката: вставил код — получил готовые URL для копирования."""
+    """Справка по запросам для команды и адреса без кода участника."""
     return """<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Deep Dish — мост Health</title>
@@ -579,167 +681,196 @@ def health_setup() -> str:
  body{font-family:-apple-system,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:20px;background:#14171B;color:#E9EDF2}
  h1{font-size:20px} h2{font-size:16px;margin-top:24px}
  .card{background:#1C232D;border-radius:14px;padding:14px;margin:10px 0}
- input{width:100%;box-sizing:border-box;font-size:16px;padding:10px;border-radius:10px;border:1px solid #2A3542;background:#10151C;color:#E9EDF2}
  button{width:100%;padding:10px;border:none;border-radius:10px;background:#44748F;color:#fff;font-size:15px;margin-top:6px}
  code{display:block;background:#10151C;border-radius:8px;padding:8px;margin-top:6px;font-size:12px;word-break:break-all;color:#9ABCD9}
  ol{padding-left:20px;font-size:14px;line-height:1.55} li{margin:6px 0}
  .mut{color:#A9AFBA;font-size:13px}
 </style></head><body>
-<h1>Мост Apple Health — сборка за 6 шагов</h1>
-<p class="mut">Код моста: Deep Dish → Семья → «Мост Apple Health» → «Скопировать код».</p>
-<input id="code" placeholder="Вставь код моста (10 знаков)" inputmode="latin">
-<div class="card"><h2>Шаги в «Быстрых командах»</h2>
+<h1>Мост Apple Health</h1>
+<p class="mut">Код для заголовка X-DeepDish-Health-Code: Deep Dish → Семья → «Мост Apple Health» → «Скопировать код».</p>
+<div class="card"><h2>Импорт веса в Deep Dish</h2>
 <ol>
 <li><b>Найти данные «Здоровья»</b>: Тип — <i>Масса тела</i>; Порядок — <i>Сначала новые</i>; Лимит — <i>7</i>.</li>
 <li><b>Повторить для каждого</b> (Repeat for Each) — подставь «Результаты Здоровья».</li>
-<li>Внутри повтора — <b>Получить содержимое URL</b>: адрес ниже (URL 1). Разверни: Метод — <i>POST</i> → Тип запроса — <i>JSON</i>; поле <code>date</code> = <i>Дата образца</i>, поле <code>kg</code> = <i>Значение</i>.</li>
-<li>После повтора — <b>Получить содержимое URL</b>: адрес ниже (URL 2), метод GET.</li>
-<li><b>Получить значение из словаря</b>: ключ <code>kcal</code>, из результата шага 4.</li>
-<li><b>Записать данные «Здоровья»</b>: Тип — <i>Пищевая энергия</i>, Значение — из шага 5, Единица — <i>ккал</i>.</li>
+<li>Внутри повтора — <b>Получить содержимое URL</b>: URL веса ниже. Метод <i>POST</i>, тело <i>JSON</i>. Поле <code>date</code> — локальная дата образца в формате <code>yyyy-MM-dd</code>, поле <code>kg</code> — масса в килограммах. Для выбора самого свежего взвешивания добавь <code>measuredAt</code> — дату и время ISO 8601 с часовым поясом.</li>
+<li>Укажи заголовок <code>X-DeepDish-Health-Code</code> с кодом участника. Проверь ответ вручную и нажми «Синхронизировать» в Deep Dish.</li>
 </ol></div>
-<div class="card"><h2>Готовые адреса (код подставится сам)</h2>
-<h2>URL 1 — вес (POST)</h2><code id="u1">вставь код выше</code><button onclick="cp('u1')">Копировать URL 1</button>
-<h2>URL 2 — калории дня (GET)</h2><code id="u2">вставь код выше</code><button onclick="cp('u2')">Копировать URL 2</button></div>
-<div class="card"><h2>Автоматизация 23:30</h2>
-<p class="mut">«Автоматизации» → «+» → «Время дня» → 23:30, ежедневно → выбрать эту команду → выключить «Спрашивать перед запуском».</p></div>
+<div class="card"><h2>Адрес импорта веса</h2><code id="u1"></code><button onclick="cp('u1')">Копировать URL веса</button></div>
+<div class="card"><h2>Проверка суммы калорий</h2>
+<p class="mut">Запрос GET с тем же заголовком и явной датой возвращает сумму уже синхронизированного дневника. Автоматическую запись в «Здоровье» подключай после проверки повторного запуска и поздних правок.</p>
+<code id="u2"></code><button onclick="cp('u2')">Копировать URL суммы</button></div>
 <script>
-const base = location.origin;
-const code = () => document.getElementById('code').value.trim();
-function upd(){ document.getElementById('u1').textContent = code() ? base+'/health/weight?code='+code() : 'вставь код выше';
- document.getElementById('u2').textContent = code() ? base+'/health/day?code='+code() : 'вставь код выше'; }
+document.getElementById('u1').textContent = location.origin + '/health/weight';
+document.getElementById('u2').textContent = location.origin + '/health/day?date=YYYY-MM-DD';
 function cp(id){ const t=document.getElementById(id).textContent; if(navigator.clipboard) navigator.clipboard.writeText(t); else {const r=document.createRange();r.selectNode(document.getElementById(id));getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('copy');} }
-document.getElementById('code').addEventListener('input', upd);
 </script></body></html>"""
+
+def wire_change(row: sqlite3.Row) -> dict[str, Any]:
+    body = json.loads(row['body'])
+    if row['kind'] in PRIVATE_KINDS:
+        body['userId'] = row['owner']
+    if deleted_flag(row) and not body.get('deletedAt'):
+        body['deletedAt'] = row['updated']
+    return {'kind': row['kind'], 'body': body, 'updated': row['updated']}
+
+
+def apply_sync_change(c: sqlite3.Connection, change: Change, user: sqlite3.Row,
+                      stamp: int) -> tuple[str, dict[str, Any] | None]:
+    kind, body = change.kind, dict(change.body)
+    uid = user['userId']
+    if kind not in ALL_KINDS:
+        return 'rejected', None
+    identity = {'profiles': uid, 'dayNormas': body.get('date')}.get(kind, body.get('id'))
+    if not isinstance(identity, str) or not identity:
+        return 'rejected', None
+    try:
+        updated = int(body.get('updatedAt') or 0)
+        if not 0 < updated <= 2**53 - 1:
+            return 'rejected', None
+        json.dumps(body, allow_nan=False)
+    except (ValueError, TypeError, OverflowError):
+        return 'rejected', None
+
+    if kind in PRIVATE_KINDS:
+        current = c.execute('SELECT * FROM items WHERE kind=? AND id=? AND owner=?',
+                            (kind, identity, uid)).fetchone()
+        owner = uid
+        body['userId'] = uid
+    else:
+        current = c.execute('SELECT * FROM items WHERE kind=? AND id=?', (kind, identity)).fetchone()
+        owner = uid
+        if current and current['owner'] not in (uid, 'local'):
+            if current['owner'] == 'system' and body.get('source') == 'system':
+                return 'current', None   # The system catalog is seeded on each device.
+            if json.loads(current['body']) == body:
+                return 'current', None   # An older client may echo a shared row.
+            return 'rejected', None
+        if not current and kind == 'foods' and body.get('source') == 'system' and body.get('ownerId') == 'system':
+            owner = 'system'
+        if kind in FAMILY_KINDS:
+            body['userId'] = uid
+    stored = json.loads(current['body']) if current else None
+    body['ownerId'] = owner
+    deleted = bool(body.get('deletedAt'))
+    repair_legacy = False
+    if kind == 'recipes' and current and current['deleted'] and not deleted:
+        return 'current', wire_change(current)
+    if kind == 'foods':
+        explicit_delete = bool(current and current['deleted'] and stored.get('delBy') == 'user')
+        if explicit_delete and (not deleted or body.get('delBy') != 'user'):
+            return 'current', wire_change(current)
+        if deleted and body.get('delBy') != 'user':
+            # Early clients sent erroneous deletions after catalog deduplication.
+            body = stored if stored else body
+            body.update(deletedAt=None, delBy=None)
+            deleted = False
+            repair_legacy = True
+        elif current and current['deleted'] and not deleted:
+            repair_legacy = True
+
+    if repair_legacy:
+        updated = max(stamp, updated, current['updated'] + 1 if current else 0)
+    body['ownerId'] = owner
+    body['updatedAt'] = updated
+    original_version = updated
+    if current and current['updated'] >= updated and not repair_legacy:
+        if stored == body:
+            return 'current', None
+        if change.baseUpdated != current['updated']:
+            return 'current', wire_change(current)
+        updated = max(stamp, current['updated'] + 1)
+        body['updatedAt'] = updated
+    c.execute("""INSERT INTO items (kind, id, owner, updated, deleted, body, applied)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT DO UPDATE SET owner = excluded.owner, updated = excluded.updated,
+                   deleted = excluded.deleted, body = excluded.body, applied = excluded.applied""",
+              (kind, identity, owner, updated, int(deleted), json.dumps(body, ensure_ascii=False), stamp))
+    canonical = {'kind': kind, 'body': body, 'updated': updated}
+    return 'applied', canonical if updated != original_version or repair_legacy else None
+
+
+def store_sync_events(c: sqlite3.Connection, uid: str, events: list[dict[str, Any]]) -> None:
+    for event in events[:500]:
+        event_id, name = event.get('id'), event.get('name')
+        if not isinstance(event_id, str) or not event_id or not isinstance(name, str):
+            continue
+        try:
+            props = event.get('props') or {}
+            if isinstance(props, str):
+                props = json.loads(props)
+            if not isinstance(props, dict):
+                props = {}
+            if name == 'off_search':
+                props.pop('q', None)
+            elif name == 'weight_logged':
+                props.pop('kg', None)
+            c.execute('INSERT OR IGNORE INTO events (id, userId, ts, name, props) VALUES (?,?,?,?,?)',
+                      (event_id, uid, int(event.get('ts') or 0), name,
+                       json.dumps(props, ensure_ascii=False, allow_nan=False)))
+        except (ValueError, TypeError, OverflowError):
+            continue
+
+
+VISIBLE_SYNC_ITEMS = """SELECT kind, id, owner, body, updated, deleted, applied FROM items
+  WHERE kind != 'offcache' AND
+    (owner = ? OR (kind IN ('foods','recipes') AND
+      (json_type(body, '$.isPublic') IS NULL OR json_extract(body, '$.isPublic') = 1))
+      OR (kind = 'achievements' AND deleted = 0))"""
+SYNC_ORDER = ' ORDER BY applied, kind, id, owner'
+
+
+def pull_sync_page(c: sqlite3.Connection, uid: str, cursor: PullCursor, stamp: int,
+                   legacy: bool) -> tuple[list[sqlite3.Row], PullCursor, bool]:
+    if cursor.kind:
+        after = ' AND (applied, kind, id, owner) > (?, ?, ?, ?)'
+        start = (uid, cursor.applied, cursor.kind, cursor.id, cursor.owner)
+    else:
+        after = ' AND applied > ?'
+        start = (uid, cursor.applied)
+    rows = c.execute(VISIBLE_SYNC_ITEMS + after + SYNC_ORDER + ' LIMIT ?',
+                     (*start, SYNC_PAGE_SIZE + 1)).fetchall()
+    if len(rows) <= SYNC_PAGE_SIZE:
+        return rows, PullCursor(applied=stamp), False
+
+    last = rows[SYNC_PAGE_SIZE - 1]
+    if legacy and rows[SYNC_PAGE_SIZE]['applied'] == last['applied']:
+        # Older clients can only resume after a timestamp. Complete that group.
+        rows = c.execute(VISIBLE_SYNC_ITEMS + after + ' AND applied <= ?' + SYNC_ORDER,
+                         (*start, last['applied'])).fetchall()
+        more = c.execute(VISIBLE_SYNC_ITEMS + ' AND applied > ? LIMIT 1',
+                         (uid, last['applied'])).fetchone() is not None
+        return rows, PullCursor(applied=last['applied']), more
+    return rows[:SYNC_PAGE_SIZE], PullCursor(
+        applied=last['applied'], kind=last['kind'], id=last['id'], owner=last['owner']), True
+
 
 @app.post('/sync')
 def sync(payload: SyncIn, user: sqlite3.Row = Depends(auth)) -> dict[str, Any]:
     uid = user['userId']
-    server_now = now_ms()
-    applied = 0
-    rejected = 0
-
+    results: list[str] = []
+    corrections: list[dict[str, Any]] = []
     with db() as c:
-        # 1) применить входящие изменения (LWW по updated; своё только)
-        for ch in payload.changes:
-            if ch.kind not in ALL_KINDS:
-                rejected += 1
-                continue
-            body = ch.body or {}
-            cid = str(body.get('id') or body.get('userId') or '')
-            if ch.kind == 'profiles':
-                cid = uid  # профиль один на юзера, ключ — userId
-                body['userId'] = uid
-            if not cid:
-                rejected += 1
-                continue
-            owner = str(body.get('ownerId') or uid)
-            if ch.kind in PUBLIC_KINDS:
-                # v0.4.2: старый клиент шлёт ownerId='local' — это МЕТКА устройства, не владелец;
-                # владельцем записи становится автор запроса (иначе Д4 отвергала автора его же продукт)
-                if owner == 'local':
-                    owner = uid
-                    body['ownerId'] = uid
-                body['ownerId'] = owner  # каталог: автор = ownerId (может быть system у форков)
-                # Д4(ревью): перезаписывать чужой продукт нельзя — только свой (форк = новый id);
-                # 'local' — наследие старого клиента, считаем ничейным: перезапись разрешена
-                cur_owner = c.execute('SELECT owner FROM items WHERE kind = ? AND id = ?', (ch.kind, cid)).fetchone()
-                if cur_owner and cur_owner['owner'] not in (uid, 'system', 'local'):
-                    rejected += 1
-                    continue
-                if owner != uid and owner != 'system' and not body.get('isPublic', True):
-                    rejected += 1
-                    continue
-            elif ch.kind in FAMILY_KINDS:
-                body['ownerId'] = uid  # семейно-публичное: автор владеет записью, видят все
-            else:
-                body['ownerId'] = uid  # личное всегда своё
-            updated = int(body.get('updatedAt') or 0)
-            if not updated:
-                rejected += 1
-                continue
-            deleted = 1 if body.get('deletedAt') else 0
-            # v0.4.6 (аудит tombstone-цикла, В. 12.11): tombstone продукта принимается только
-            # с провенансом delBy='user' (осознанное удаление в UI, клиент 0.7.17+). Всё
-            # остальное (эхо дедупа v0.7.10–0.7.14, старые клиенты) — игнорируем и ВОСКРЕШАЕМ
-            # запись: updated = серверное «сейчас», новее любого локального tombstone → pull
-            # раздаёт живую версию всем, цикл «удалил-вытянул-удалил» разомкнут с двух концов.
-            # Живой продукт поверх удалённого на сервере — тоже воскресает. Записи/рецепты:
-            # их удаления легитимны всегда, LWW как был.
-            resurrect = False
-            if ch.kind == 'foods' and deleted and body.get('delBy') != 'user':
-                body['deletedAt'] = None
-                body['delBy'] = None
-                body['updatedAt'] = server_now
-                deleted = 0
-                resurrect = True
-            elif ch.kind == 'foods' and not deleted:
-                cur_del = c.execute('SELECT deleted FROM items WHERE kind = ? AND id = ?',
-                                    (ch.kind, cid)).fetchone()
-                if cur_del and cur_del['deleted']:
-                    resurrect = True  # живая версия приехала поверх удалённой — вернуть в каталог
-            if resurrect:
-                updated = server_now
-            cur = c.execute('SELECT updated FROM items WHERE kind = ? AND id = ?', (ch.kind, cid)).fetchone()
-            if cur and cur['updated'] >= updated and not resurrect:
-                continue  # сервер новее или тот же — клиент получит серверную версию
-            c.execute('''INSERT INTO items (kind, id, owner, updated, deleted, body, applied)
-                         VALUES (?,?,?,?,?,?,?)
-                         ON CONFLICT (kind, id) DO UPDATE SET
-                           owner = excluded.owner, updated = excluded.updated,
-                           deleted = excluded.deleted, body = excluded.body, applied = excluded.applied''',
-                      (ch.kind, cid, uid if ch.kind not in PUBLIC_KINDS else owner, updated, deleted,
-                       json.dumps(body, ensure_ascii=False), server_now))
-            applied += 1
+        c.execute('BEGIN IMMEDIATE')
+        wall_time = now_ms()
+        previous = sync_stamp(c)
+        stamp = advance_sync_stamp(c, previous, wall_time)
+        for change in payload.changes:
+            status, correction = apply_sync_change(c, change, user, stamp)
+            results.append(status)
+            if correction:
+                corrections.append(correction)
+        store_sync_events(c, uid, payload.events)
+        requested = payload.cursor or PullCursor(applied=payload.since)
+        if requested.applied > stamp or (payload.cursor and requested.applied > previous):
+            requested = PullCursor()
+        rows, cursor, more = (pull_sync_page(c, uid, requested, stamp, payload.cursor is None)
+                              if payload.pull else ([], requested, False))
 
-        # 2) события метрик (идемпотентно по id)
-        for ev in payload.events[:500]:
-            try:
-                # v0.4.5: клиент шлёт props как JSON-строку → деспирализуем перед записью
-                props = ev.get('props') or {}
-                if isinstance(props, str):
-                    try:
-                        props = json.loads(props)
-                    except Exception:
-                        props = {}
-                if not isinstance(props, dict):
-                    props = {}
-                c.execute('INSERT OR IGNORE INTO events (id, userId, ts, name, props) VALUES (?,?,?,?,?)',
-                          (str(ev.get('id')), uid, int(ev.get('ts') or 0), str(ev.get('name') or '?'),
-                           json.dumps(props, ensure_ascii=False)))
-            except Exception:
-                pass
-
-        # 3) отдать изменения новее since: личное — только своё, каталог — общий.
-        # v0.4.6 (аудит 12.11): tombstone каталога (foods/recipes) отдаётся ВСЕМ — раньше
-        # `deleted = 0` прятал его от семьи, и осознанные удаления (delBy='user') никогда
-        # не расходились: у других навсегда оставалась живая копия. Эхо-дедупа тут уже нет —
-        # сервер воскрешает tombstone без провенанса при приёме (см. выше). Ачивки — как было:
-        # их tombstone адресные (сброс сегмента), в семейную выдачу не идут.
-        rows = c.execute('''SELECT kind, body, updated, deleted, applied FROM items
-                            WHERE applied > ? AND kind != 'offcache'
-                              AND (owner = ?
-                                   OR (kind IN ('foods','recipes'))
-                                   OR (kind = 'achievements' AND deleted = 0))
-                            ORDER BY applied LIMIT 5000''',
-                         (payload.since, uid)).fetchall()
-        out: list[dict[str, Any]] = []
-        for r in rows:
-            body = json.loads(r['body'])
-            if r['kind'] in PUBLIC_KINDS and not body.get('isPublic', True) and body.get('ownerId') != uid:
-                continue  # чужие черновики каталога не рассылаем
-            # Е1(ревью-2): серверная пометка deleted (мост-дедуп и т.п.) должна доезжать в теле
-            if deleted_flag(r) and not body.get('deletedAt'):
-                body['deletedAt'] = r['updated']
-            out.append({'kind': r['kind'], 'body': body, 'updated': r['updated']})
-
-        # 4) чистка старых tombstone (не чаще раза в час — по факту запроса, дёшево на SQLite)
-        c.execute('DELETE FROM items WHERE deleted = 1 AND updated < ?', (server_now - TOMBSTONE_TTL_DAYS * 86400000,))
-        pass
-
-    # Д2(ревью): курсор — последняя фактически отданная запись; выдача короче лимита — значит
-    # исчерпана до «сейчас». Мусорные applied в базе на курсор не влияют (счёт по отданным строкам).
-    max_updated = rows[-1]['applied'] if len(rows) >= 5000 else server_now
-    skew_ms = (payload.client_now - server_now) if payload.client_now else 0
-    log.info('sync user=%s nick=%s since=%d applied=%d rejected=%d out=%d events=%d skew_ms=%d',
-             uid, user['nickname'], payload.since, applied, rejected, len(out), len(payload.events), skew_ms)
-    return {'changes': out, 'serverTime': server_now, 'maxUpdated': max_updated, 'applied': applied, 'rejected': rejected}
+    out = [wire_change(row) for row in rows]
+    applied, rejected = results.count('applied'), results.count('rejected')
+    skew = payload.client_now - wall_time if payload.client_now else 0
+    log.info('sync user=%s since=%d applied=%d rejected=%d out=%d events=%d skew_ms=%d',
+             uid, requested.applied, applied, rejected, len(out), len(payload.events), skew)
+    return {'changes': out, 'corrections': corrections, 'results': results,
+            'serverTime': stamp, 'maxUpdated': cursor.applied, 'cursor': cursor.model_dump(),
+            'hasMore': more, 'applied': applied, 'rejected': rejected}

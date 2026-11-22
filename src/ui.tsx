@@ -1,5 +1,5 @@
 // UI-кит Deep Dish: стекло, кольца, листы, сегменты, тумблеры — в дизайн-языке проекта
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 
 export const cx = (...a: Array<string | false | undefined>) => a.filter(Boolean).join(' ');
 
@@ -59,6 +59,7 @@ export function Sheet({ open, onClose, children, title, note }: {
 }) {
   // свайп вниз за шапку шита — закрытие (нативный жест iOS): зона = ручка + заголовок
   const sheetRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const drag = useRef<{ y0: number; t0: number; dy: number; v: number; active: boolean } | null>(null);
   const onDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -87,16 +88,19 @@ export function Sheet({ open, onClose, children, title, note }: {
     if (d.active && (d.dy > 70 || d.v > 0.55)) onClose();
   };
   useLockScroll(open);
+  useDialogAccess(sheetRef, open, onClose);
   return (
     <>
       <div className={cx('dd-sheet-bg', open && 'show')} onClick={onClose} />
-      <div className={cx('dd-sheet', open && 'show')} ref={sheetRef}>
+      <div className={cx('dd-sheet', open && 'show')} ref={sheetRef} tabIndex={-1} role="dialog"
+        aria-modal={open || undefined} aria-hidden={!open} aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : 'Дополнительная панель'}>
         <div
           className="dd-sheet-head"
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
         >
           <div className="dd-grab" />
-          {title && <h3 className="dd-sheet-title">{title}</h3>}
+          {title && <h3 id={titleId} className="dd-sheet-title">{title}</h3>}
           {note && <div className="dd-sheet-note">{note}</div>}
         </div>
         {children}
@@ -116,18 +120,62 @@ function useLockScroll(open: boolean) {
   }, [open]);
 }
 
+const dialogStack: HTMLElement[] = [];
+function useDialogAccess(ref: React.RefObject<HTMLDivElement>, open: boolean, onClose?: () => void) {
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const panel = ref.current;
+    if (!panel) return;
+    panel.inert = !open;
+    if (!open) return;
+    const previous = document.activeElement;
+    dialogStack.push(panel);
+    panel.focus({ preventScroll: true });
+    const keydown = (event: KeyboardEvent) => {
+      if (dialogStack.at(-1) !== panel) return;
+      if (event.key === 'Escape' && close.current) {
+        event.preventDefault(); close.current(); return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = [...panel.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex="0"]')]
+        .filter(element => !element.matches(':disabled') && !element.closest('[inert]') && element.getClientRects().length);
+      const target = document.activeElement;
+      const first = focusable[0], last = focusable.at(-1);
+      if (!first || !last) { event.preventDefault(); return; }
+      if (!focusable.includes(target as HTMLElement) || (event.shiftKey ? target === first : target === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => {
+      document.removeEventListener('keydown', keydown);
+      const top = dialogStack.at(-1) === panel;
+      dialogStack.splice(dialogStack.indexOf(panel), 1);
+      panel.inert = true;
+      if (top && previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [open, ref]);
+}
+
 /** верхняя доппанель (типовые порции при создании продукта): выезжает сверху, фон блурится */
 export function TopSheet({ open, onClose, title, children }: {
   open: boolean; onClose: () => void; children: React.ReactNode; title?: string;
 }) {
   useLockScroll(open);
+  const panel = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useDialogAccess(panel, open, onClose);
   return (
     <>
       <div className={cx('dd-sheet-bg', open && 'show')} onClick={onClose} />
-      <div className={cx('dd-topsheet', open && 'show')}>
+      <div className={cx('dd-topsheet', open && 'show')} ref={panel} tabIndex={-1} role="dialog"
+        aria-modal={open || undefined} aria-hidden={!open} aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : 'Дополнительная панель'}>
         <div className="dd-sheet-head">
           <div className="dd-grab" />
-          {title && <h3 className="dd-sheet-title">{title}</h3>}
+          {title && <h3 id={titleId} className="dd-sheet-title">{title}</h3>}
         </div>
         {children}
       </div>
@@ -185,14 +233,14 @@ export function Segmented<T extends string>({ value, onChange, options }: {
   return (
     <div className="dd-seg">
       {options.map(o => (
-        <button key={o.value} className={cx(o.value === value && 'on')} onClick={() => onChange(o.value)}>{o.label}</button>
+        <button key={o.value} aria-pressed={o.value === value} className={cx(o.value === value && 'on')} onClick={() => onChange(o.value)}>{o.label}</button>
       ))}
     </div>
   );
 }
 
-export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return <button className={cx('dd-sw', on && 'on')} onClick={() => onChange(!on)} aria-pressed={on} />;
+export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
+  return <button className={cx('dd-sw', on && 'on')} onClick={() => onChange(!on)} role="switch" aria-checked={on} aria-label={label} />;
 }
 
 export function ActionButton({ children, onClick, type }: { children: React.ReactNode; onClick?: () => void; type?: 'submit' }) {
@@ -201,10 +249,13 @@ export function ActionButton({ children, onClick, type }: { children: React.Reac
 
 export function Modal({ open, onClose, children }: { open: boolean; onClose?: () => void; children: React.ReactNode }) {
   useLockScroll(open);
+  const panel = useRef<HTMLDivElement>(null);
+  useDialogAccess(panel, open, onClose);
   if (!open) return null;
   return (
     <div className="dd-modal-bg" onClick={onClose}>
-      <div className="dd-modal" onClick={e => e.stopPropagation()}>{children}</div>
+      <div className="dd-modal" ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Диалог Deep Dish"
+        onClick={e => e.stopPropagation()}>{children}</div>
     </div>
   );
 }
@@ -229,7 +280,7 @@ export function Collapse({ title, open, onToggle, children, right }: {
 }) {
   return (
     <div className="dd-collapse">
-      <button className="dd-collapse-head" onClick={onToggle}>
+      <button className="dd-collapse-head" aria-expanded={open} onClick={onToggle}>
         <span className="dd-collapse-title">{title}</span>
         <span className="dd-collapse-right">{right}<span className={cx('dd-chev', open && 'up')}>⌄</span></span>
       </button>

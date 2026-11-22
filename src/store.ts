@@ -27,13 +27,13 @@ export async function saveEntry(e: Entry) {
 
 export async function addEntry(params: {
   date: string; slot: Slot; kind: 'food' | 'recipe'; refId: string; grams: number;
-  per100: KbjuSnapshot; timeEaten?: string;
+  per100: KbjuSnapshot; timeEaten?: string; unit?: Entry['unit'];
 }): Promise<Entry> {
   const k = params.grams / 100; // для порционных grams = шт × 100 (условные)
   const entry: Entry = {
     id: newId(), userId: LOCAL_USER, date: params.date,
     timeEaten: params.timeEaten ?? params.slot.defaultTime ?? nowHM(),
-    slotId: params.slot.id, kind: params.kind, refId: params.refId, grams: params.grams,
+    slotId: params.slot.id, kind: params.kind, refId: params.refId, grams: params.grams, unit: params.unit ?? 'g',
     snapshot: {
       kcal: Math.round(params.per100.kcal * k),
       p: Math.round(params.per100.p * k * 10) / 10,
@@ -218,7 +218,7 @@ export async function saveProfile(p: Profile) {
     const exist = await db.weightLogs.where('[userId+date]').equals([LOCAL_USER, today]).first();
     if (exist && !exist.deletedAt) await db.weightLogs.update(exist.id, { weightKg: p.weightKg, updatedAt: Date.now() });
     else await db.weightLogs.add({ id: newId(), userId: LOCAL_USER, date: today, weightKg: p.weightKg, source: 'manual', createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null });
-    track('weight_logged', { kg: p.weightKg, source: 'profile' });
+    track('weight_logged', { source: 'profile' });
   }
 }
 
@@ -385,9 +385,10 @@ export function adaptiveTdee(weights: WeightPoint[], intake: Map<string, number>
     const wa = weightAt(weights, from, 'any'), wb = weightAt(weights, to, 'left');
     if (wa === null || wb === null) continue;
     const delta = wb - wa;
-    const tdee = (sum - delta * 7700) / 28;
+    const intakeAvg = sum / days;
+    const tdee = intakeAvg - delta * 7700 / 28;
     if (tdee < 1200 || tdee > 5000) continue; // защита от мусорных окон
-    windows.push({ tdee, windowDays: 28, coverage: days / 28, intakeAvg: sum / 28, weightDelta: delta, from, to });
+    windows.push({ tdee, windowDays: 28, coverage: days / 28, intakeAvg, weightDelta: delta, from, to });
   }
   if (!windows.length) return null;
   return windows[0]; // первое = самое свежее (off растёт в прошлое)
@@ -403,7 +404,7 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
     if (date === todayISO() && existing.detail.goalPct === undefined) {
       const gp = await goalProgress(date);
       if (gp) {
-        const upd = { ...existing, detail: { ...existing.detail, goalPct: gp.pct, trendPw: gp.trendPw, planPw: gp.planPw } };
+        const upd = { ...existing, updatedAt: Date.now(), detail: { ...existing.detail, goalPct: gp.pct, trendPw: gp.trendPw, planPw: gp.planPw } };
         await db.dayNormas.put(upd);
         return upd;
       }
@@ -413,7 +414,7 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
   const base = calcNorma(pr);
   if (!base) return null;
   const today = todayISO();
-  const weights = await getWeights();
+  const weights = (await getWeights()).filter(weight => weight.date <= date);
   const upTo = weights.length ? weights[weights.length - 1].date : today;
   const from = isoLocal(new Date(new Date(upTo + 'T00:00:00').getTime() - 119 * 86400000));
   const intake = await getDailyIntake(from, upTo);
@@ -436,7 +437,7 @@ export async function ensureDayNorma(date: string): Promise<DayNorma | null> {
   const snap: DayNorma = {
     date, retro: date < today ? true : undefined, kcal, p: Math.round(kcal * (pr.macroPct?.p ?? 25) / 100 / 4),
     f: Math.round(kcal * (pr.macroPct?.f ?? 30) / 100 / 9), c: Math.round(kcal * (pr.macroPct?.c ?? 45) / 100 / 4),
-    basis: detail.tdeeAdaptive ? 'adaptive' : 'formula', detail, createdAt: Date.now(),
+    basis: detail.tdeeAdaptive ? 'adaptive' : 'formula', detail, createdAt: Date.now(), updatedAt: Date.now(),
   };
   if (date <= today) await db.dayNormas.put(snap); // будущее не фиксируем
   return snap;
@@ -494,47 +495,6 @@ export async function goalProgress(date = todayISO()): Promise<GoalProgress | nu
   return { mode: pr.goal, planPw: plan, trendPw, pct: Math.round(pct * 100), tooFast: pct >= 1.5 };
 }
 
-// ── Экспорт ──
-export async function exportJSON(): Promise<Blob> {
-  const dump = {
-    app: 'deep-dish', version: 1, exportedAt: new Date().toISOString(),
-    foods: await db.foods.toArray(), recipes: await db.recipes.toArray(),
-    savedMeals: await db.savedMeals.toArray(), slots: await db.slots.toArray(),
-    entries: await db.entries.toArray(), weightLogs: await db.weightLogs.toArray(),
-    dayNormas: await db.dayNormas.toArray(),
-    profiles: await db.profiles.toArray(),
-  };
-  return new Blob([JSON.stringify(dump, null, 1)], { type: 'application/json' });
-}
-
-export async function exportCSV(): Promise<Blob> {
-  const slots = await getSlots();
-  const slotName = new Map(slots.map(s => [s.id, s.name]));
-  const foods = await db.foods.toArray(); const recipes = await db.recipes.toArray();
-  const nm = (e: Entry) =>
-    e.kind === 'food' ? (foods.find(f => f.id === e.refId)?.name ?? e.refId)
-      : (recipes.find(r => r.id === e.refId)?.name ?? e.refId);
-  const es = (await db.entries.filter(e => !e.deletedAt).toArray()).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.timeEaten < b.timeEaten ? -1 : 1);
-  const rows = [['дата', 'время', 'приём', 'блюдо', 'граммы', 'ккал', 'белки', 'жиры', 'углеводы'].join(';')];
-  for (const e of es) rows.push([e.date, e.timeEaten, slotName.get(e.slotId) ?? '', nm(e), String(e.grams), String(e.snapshot.kcal), String(e.snapshot.p), String(e.snapshot.f), String(e.snapshot.c)].join(';'));
-  return new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv' });
-}
-
-export function download(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-  track('export_done', { name });
-}
-
-export async function wipeAll() {
-  await db.transaction('rw', [db.foods, db.recipes, db.savedMeals, db.slots, db.entries, db.weightLogs, db.profiles], async () => {
-    await Promise.all([db.foods.clear(), db.recipes.clear(), db.savedMeals.clear(), db.slots.clear(), db.entries.clear(), db.weightLogs.clear(), db.profiles.clear()]);
-  });
-  track('wipe_all');
-}
-
 // ── Сохранённые приёмы («мой завтрак» одним тапом) ────────────────────────────
 
 export async function saveMealFromSlot(name: string, slotId: string, date: string): Promise<number> {
@@ -557,7 +517,7 @@ export async function applyMeal(mealId: string, date: string, slot: Slot): Promi
     const f = await db.foods.get(it.foodId);
     if (!f || f.deletedAt) continue;
     await addEntry({ date, slot, kind: 'food', refId: it.foodId, grams: it.grams,
-      per100: { kcal: f.kcalPer100g, p: f.pPer100g, f: f.fPer100g, c: f.cPer100g } });
+      unit: f.unit, per100: { kcal: f.kcalPer100g, p: f.pPer100g, f: f.fPer100g, c: f.cPer100g } });
     n++;
   }
   if (n) track('meal_applied', { items: n });
@@ -566,28 +526,6 @@ export async function applyMeal(mealId: string, date: string, slot: Slot): Promi
 
 export async function deleteMeal(id: string) {
   await db.savedMeals.update(id, { deletedAt: Date.now(), updatedAt: Date.now() });
-}
-
-// ── Импорт JSON (восстановление бэкапа) ───────────────────────────────────────
-
-export async function importJSONText(text: string): Promise<Record<string, number>> {
-  const d = JSON.parse(text) as Record<string, unknown>;
-  if (d?.app !== 'deep-dish') throw new Error('это не бэкап Deep Dish');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tabs: Array<[any, string]> = [
-    [db.foods, 'foods'], [db.recipes, 'recipes'], [db.savedMeals, 'savedMeals'],
-    [db.slots, 'slots'], [db.entries, 'entries'], [db.weightLogs, 'weightLogs'], [db.profiles, 'profiles'],
-  ];
-  const counts: Record<string, number> = {};
-  for (const [t, k] of tabs) {
-    const arr = d[k];
-    if (!Array.isArray(arr) || !arr.length) continue;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (t as any).bulkPut(arr);
-    counts[k] = arr.length;
-  }
-  track('import_json', counts);
-  return counts;
 }
 
 export const TODAY = () => todayISO();

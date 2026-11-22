@@ -26,6 +26,7 @@ export async function searchOff(query: string): Promise<OffHit[]> {
   const q = query.trim();
   if (q.length < 3) return [];
   let hits: OffHit[] = [];
+  let via = 'direct';
   // основной путь: через свой сервер синка (надёжно, без CORS; сервер кэширует 10 мин)
   const st = loadSync();
   if (st) {
@@ -33,11 +34,14 @@ export async function searchOff(query: string): Promise<OffHit[]> {
       const res = await fetch(st.server.replace(/\/$/, '') + '/off/search?q=' + encodeURIComponent(q), {
         headers: { Authorization: 'Bearer ' + st.token }, signal: AbortSignal.timeout(11000),
       });
-      if (res.ok) hits = (await res.json()).products ?? [];
+      if (res.ok) {
+        hits = (await res.json()).products ?? [];
+        if (hits.length) via = 'server';
+      }
     } catch { /* сервер недоступен — попробуем напрямую */ }
   }
   if (!hits.length) { try { hits = await searchOffDirect(q); } catch { /* обе дороги пусты — тихо */ } }
-  track('off_search', { q: q.slice(0, 30), found: hits.length, via: st && hits.length ? 'server' : 'direct' }); // В.: лог «искомое vs найденное» для решения судьбы поиска
+  track('off_search', { found: hits.length, via });
   return hits;
 }
 

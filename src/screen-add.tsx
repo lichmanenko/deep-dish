@@ -8,7 +8,7 @@ const ScannerLayer = lazy(() => import('./scanner-layer').then(m => ({ default: 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Slot, type SavedMeal } from './db';
 import { getCatalog, getRecent, saveCustomFood, saveRecipe, savePortions, addEntry, applyMeal, deleteMeal, track, type CatalogItem } from './store';
-import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS, matchTokens, todayISO } from './lib';
+import { nowHM, kbjuSuspicious, fmt, normE, guessCategory, lookupBarcode, HIDDEN_CATS, matchTokens, todayISO, parseQuantity } from './lib';
 import { Sheet, Modal, Confirm, Collapse, TopSheet, SwipeRow, cx, BarcodeIcon as Icons_Barcode } from './ui';
 import { searchOff, saveOffHit, type OffHit } from './off';
 import { unlockSpecial } from './achievements';
@@ -345,17 +345,17 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
   }, [open, item, presetGrams, presetTime, slot, isPc, slots]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!item) return null;
-  const n = parseFloat(qty.replace(',', '.')) || 0;
+  const n = parseQuantity(qty);
   const grams = isPc ? n * 100 : n;
   const k = grams / 100;
   const cur = slots.find(s => s.id === slotId) ?? slots.find(s => s.id === 'slot-snack') ?? slots[0];
 
   async function doSave(force = false) {
-    if (!item || !cur || n <= 0) return;
+    if (!item || !cur || n <= 0 || !time) return;
     if (!force && kbjuSuspicious(item.per100.kcal, item.per100.p, item.per100.f, item.per100.c, item.name)) {
       setWarn(true); return;
     }
-    await addEntry({ date, slot: cur, kind: item.kind, refId: item.id, grams, per100: item.per100, timeEaten: time });
+    await addEntry({ date, slot: cur, kind: item.kind, refId: item.id, grams, per100: item.per100, timeEaten: time, unit: item.unit });
     track('entry_added', { kind: item.kind, unit: item.unit, source: 'add-screen', foodSource: item.kind === 'food' ? (item.food.source ?? 'custom') : 'recipe' }); // v0.7.4: воронка ввода — откуда продукт
     onSaved?.();
     onClose();
@@ -375,12 +375,12 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
       <div className="dd-input-row">
         <div className="flex-1 min-w-0">
           <div className="dd-field-label" style={{ marginTop: 0 }}>{isPc ? 'Порций (шт)' : 'Вес порции, г'}</div>
-          <input className="dd-input dd-num" type="number" inputMode="decimal" value={qty}
+          <input className="dd-input dd-num" aria-label={isPc ? 'Количество порций' : 'Вес порции, г'} type="text" inputMode="decimal" value={qty}
             onChange={e => setQty(e.target.value)} />
         </div>
         <div className="min-w-0" style={{ width: 116 }}>
           <div className="dd-field-label" style={{ marginTop: 0 }}>Время</div>
-          <input className="dd-input dd-num" type="time" value={time} onChange={e => setTime(e.target.value)} />
+          <input className="dd-input dd-num" aria-label="Время приёма пищи" type="time" value={time} onChange={e => setTime(e.target.value)} />
         </div>
       </div>
 
@@ -413,7 +413,7 @@ function EntryEdit({ date, slot, open, item, presetGrams, presetTime, onClose, o
             <button className="dd-action" onClick={onClose}>Не сохранять</button>
             <button className="dd-action strong" onClick={() => doSave(true)}>Сохранить как есть</button>
           </>
-          : <button className="dd-action strong" onClick={() => doSave()}>Сохранить</button>}
+          : <button className="dd-action strong" disabled={!Number.isFinite(n) || n <= 0 || !time} onClick={() => doSave()}>Сохранить</button>}
       </div>
     </Sheet>
   );
