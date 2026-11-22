@@ -22,36 +22,48 @@ const num = (n: unknown): number => {
   return Number.isFinite(v) ? (v as number) : 0;
 };
 
-export async function searchOff(query: string): Promise<OffHit[]> {
+function lookupSignal(signal: AbortSignal, timeout: number): AbortSignal {
+  const deadline = AbortSignal.timeout(timeout);
+  return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, deadline]) : deadline;
+}
+
+export async function searchOff(query: string, signal: AbortSignal): Promise<{ hits: OffHit[]; available: boolean }> {
   const q = query.trim();
-  if (q.length < 3) return [];
+  if (q.length < 3) return { hits: [], available: true };
   let hits: OffHit[] = [];
-  let via = 'direct';
+  let via = 'none';
   // основной путь: через свой сервер синка (надёжно, без CORS; сервер кэширует 10 мин)
   const st = loadSync();
   if (st) {
     try {
       const res = await fetch(st.server.replace(/\/$/, '') + '/off/search?q=' + encodeURIComponent(q), {
-        headers: { Authorization: 'Bearer ' + st.token }, signal: AbortSignal.timeout(11000),
+        headers: { Authorization: 'Bearer ' + st.token }, signal: lookupSignal(signal, 11000),
       });
       if (res.ok) {
         hits = (await res.json()).products ?? [];
-        if (hits.length) via = 'server';
+        via = 'server';
       }
-    } catch { /* сервер недоступен — попробуем напрямую */ }
+    } catch { signal.throwIfAborted(); }
   }
-  if (!hits.length) { try { hits = await searchOffDirect(q); } catch { /* обе дороги пусты — тихо */ } }
-  track('off_search', { found: hits.length, via });
-  return hits;
+  if (!hits.length) {
+    try {
+      hits = await searchOffDirect(q, signal);
+      via = 'direct';
+    } catch { signal.throwIfAborted(); }
+  }
+  signal.throwIfAborted();
+  const available = via !== 'none';
+  track('off_search', { found: hits.length, via, available });
+  return { hits, available };
 }
 
 /** Напрямую в OFF (без сервера или если сервер не ответил) — может падать из-за CORS/сети. */
-async function searchOffDirect(q: string): Promise<OffHit[]> {
+async function searchOffDirect(q: string, signal: AbortSignal): Promise<OffHit[]> {
   const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + encodeURIComponent(q)
     + '&search_simple=1&action=process&json=1&page_size=10'
     + '&fields=code,product_name,product_name_ru,generic_name,brands,nutriments';
-  const res = await fetch(url, { signal: AbortSignal.timeout(9000) });
-  if (!res.ok) return [];
+  const res = await fetch(url, { signal: lookupSignal(signal, 9000) });
+  if (!res.ok) throw new Error(`OFF: HTTP ${res.status}`);
   const r = await res.json();
   const hits: OffHit[] = [];
   for (const p of (r.products ?? []) as OffProduct[]) {

@@ -29,18 +29,34 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   const [managing, setManaging] = useState<CatalogItem | null>(null);
   const [explain, setExplain] = useState<string | null>(null);
   const [delMeal, setDelMeal] = useState<SavedMeal | null>(null);
-  // Open Food Facts: онлайн-секция при поиске (интернет), офлайн — не показываем
-  const [offHits, setOffHits] = useState<OffHit[] | null>(null);
-  const [offBusy, setOffBusy] = useState(false);
+  const query = q.trim();
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const [offResult, setOffResult] = useState<{ query: string; hits: OffHit[]; available: boolean } | null>(null);
   useEffect(() => {
-    const qq = q.trim();
-    if (qq.length < 3 || !navigator.onLine) { setOffHits(null); setOffBusy(false); return; }
-    setOffBusy(true);
+    const updateOnline = () => setOnline(navigator.onLine);
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
+    return () => {
+      window.removeEventListener('online', updateOnline);
+      window.removeEventListener('offline', updateOnline);
+    };
+  }, []);
+  useEffect(() => {
+    setOffResult(null);
+    if (query.length < 3 || !online) return;
+    const lookup = new AbortController();
     const t = setTimeout(() => {
-      searchOff(qq).then(h => setOffHits(h)).catch(() => setOffHits(null)).finally(() => setOffBusy(false));
+      searchOff(query, lookup.signal).then(result => {
+        if (!lookup.signal.aborted) setOffResult({ query, ...result });
+      }).catch(() => {
+        if (!lookup.signal.aborted) setOffResult({ query, hits: [], available: false });
+      });
     }, 700);
-    return () => clearTimeout(t);
-  }, [q]);
+    return () => { clearTimeout(t); lookup.abort(); };
+  }, [query, online]);
+  const activeOffResult = online && offResult?.query === query ? offResult : null;
+  const offHits = activeOffResult?.hits ?? [];
+  const offBusy = query.length >= 3 && online && !activeOffResult;
 
   const catalog = useLiveQuery(() => getCatalog(q), [q], [] as CatalogItem[]);
   const recentKeys = useLiveQuery(() => getRecent(10), [], [] as Array<{ kind: 'food' | 'recipe'; refId: string }>);
@@ -80,6 +96,8 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   const mealList = useMemo(
     () => (searching ? (meals ?? []).filter(m => matchTokens(m.name, q)) : meals ?? []),
     [searching, meals, ql]);
+  const noMatches = !recentMatches.length && !searchRest.length && !mealList.length && !offHits.length;
+  const outsideUnavailable = query.length >= 3 && (!online || activeOffResult?.available === false);
 
   async function tapMeal(m: SavedMeal) {
     const target = slot ?? allSlots[0];
@@ -112,7 +130,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
         </div>
         <div className="px-4 pt-1 dd-searchwrap">
           <input
-            className="dd-input" placeholder={slot ? `Добавить в ${slot.name.toLowerCase()}…` : 'Поиск: название или штрихкод…'}
+            className="dd-input" aria-label="Поиск продуктов" placeholder={slot ? `Добавить в ${slot.name.toLowerCase()}…` : 'Поиск: название или штрихкод…'}
             value={q} onChange={e => setQ(e.target.value)} style={{ paddingRight: 40 }}
           />
           <button className="dd-scanbtn" aria-label="Сканировать штрихкод" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open'); }}>
@@ -152,16 +170,20 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <>
 
             <Section title="⌕ Найдено" id="srch-found" defaultOpen>
-              {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
-                <div className="text-center" style={{ marginTop: '28vh' }}>
-                  <div style={{ fontSize: '2rem' }}>🔍</div>
-                  <p className="text-[0.9375rem] mt-2 mb-0" style={{ color: 'var(--tx)' }}>Ничего не нашлось</p>
-                </div>
-              )}
-              {searchRest.length === 0 && recentMatches.length === 0 && !offBusy && !(offHits ?? []).length && (
-                <div className="flex gap-2 mb-4 mt-3">
-                  <button className="dd-action" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open', { from: 'empty' }); }}>📷 Сканировать штрихкод</button>
-                  {q.trim() && <button className="dd-action strong" onClick={() => setCreatingFood(true)}>＋ {q.trim()}</button>}
+              {noMatches && (
+                <div className="py-4">
+                  <div role="status">
+                    <p className="text-sm m-0">
+                      {offBusy ? 'Ищем в Open Food Facts…' : outsideUnavailable ? 'В каталоге нет совпадений' : 'Ничего не нашлось'}
+                    </p>
+                    {outsideUnavailable && <p className="text-sm mt-1 mb-0" style={{ color: 'var(--mut)' }}>
+                      {online ? 'Open Food Facts временно недоступен.' : 'Интернет недоступен.'}
+                    </p>}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button className="dd-action" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open', { from: 'empty' }); }}>Сканировать штрихкод</button>
+                    <button className="dd-action strong" onClick={() => setCreatingFood(true)}>Добавить продукт</button>
+                  </div>
                 </div>
               )}
               {/* v0.7.18 (В., 12.11: «Кофе Кортадо» не находился поиском «Кортадо»):
@@ -173,14 +195,14 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
                 return rank(a) - rank(b);
               }).map(i => <ItemRow key={`s-${i.kind}:${i.id}`} item={i} onOpen={() => openItem(i)}  onManage={setManaging} onWarn={() => setExplain('warn')} />)}
             </Section>
-            {(offHits ?? []).length > 0 && (
+            {offHits.length > 0 && (
               <div className="dd-allhead" style={{ marginTop: 2 }}>Из интернета · Open Food Facts</div>
             )}
-            {(offHits ?? []).map(h => (
+            {offHits.map(h => (
               <div key={'off-' + h.id + h.name} className="dd-item" role="button"
                 onClick={async () => {
                   const f = await saveOffHit(h);
-                  setOffHits(null);
+                  setOffResult(result => result && { ...result, hits: [] });
                   setEditing({
                     item: {
                       kind: 'food', id: f.id, name: f.name,

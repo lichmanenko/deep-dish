@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "icons": "node scripts/gen-icons.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "node scripts/e2e-offline.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",
@@ -25,6 +26,7 @@
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
     "fake-indexeddb": "6.2.4",
+    "playwright-core": "1.65.1",
     "postcss": "^8.4.47",
     "sharp": "^0.35.5",
     "tailwindcss": "^3.4.13",

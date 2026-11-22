@@ -549,7 +549,7 @@ function EntryLine({ e, slot, showTime, onClick }: { e: Entry; slot: Slot; showT
     let alive = true;
     (async () => {
       const f = e.kind === 'food' ? await db.foods.get(e.refId) : await db.recipes.get(e.refId);
-      if (alive) { setName(f?.name ?? '—'); setIsPc(f?.unit === 'pc'); }
+      if (alive) { setName(f?.name ?? '—'); setIsPc((e.unit ?? f?.unit) === 'pc'); }
     })();
     return () => { alive = false; };
   }, [e]);
