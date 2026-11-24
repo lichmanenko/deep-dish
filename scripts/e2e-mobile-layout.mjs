@@ -17,7 +17,11 @@ async function showNavigation(page) {
 }
 
 async function inside(locator, bounds, label) {
-  const box = await locator.boundingBox();
+  let box;
+  for (let attempt = 0; !box && attempt < 3; attempt++) {
+    await locator.waitFor();
+    box = await locator.boundingBox();
+  }
   assert.ok(box, `${label}: элемент отсутствует`);
   assert.ok(box.x >= bounds.left - 1 && box.x + box.width <= bounds.right + 1
     && box.y >= bounds.top - 1 && box.y + box.height <= bounds.bottom + 1,
@@ -75,9 +79,14 @@ async function checkActivityLayout(page, nav, bounds, name) {
     && Math.abs(box.y - first.y) <= 1 && Math.abs(box.height - first.height) <= 1
     && (index === 0 || box.x >= boxes[index - 1].x + boxes[index - 1].width - 1)),
   `${name}: четыре кнопки активности должны быть в одном ряду`);
+  assert.ok(first.x >= bounds.left - 1 && last.x + last.width <= bounds.right + 1,
+    `${name}: ряд активности выходит за границы экрана`);
   for (const control of controls) {
-    assert.ok(await control.evaluate(element => element.scrollWidth <= element.clientWidth + 1),
-      `${name}: подпись активности выходит за границу кнопки`);
+    const { scrollWidth, clientWidth, textContent } = await control.evaluate(element => ({
+      scrollWidth: element.scrollWidth, clientWidth: element.clientWidth, textContent: element.textContent,
+    }));
+    assert.ok(scrollWidth <= clientWidth + 1,
+      `${name}: «${textContent}» не помещается в кнопку (${scrollWidth} > ${clientWidth})`);
   }
   await inside(trend, {
     ...bounds, top: first.y + first.height, bottom: Infinity, left: first.x, right: last.x + last.width,

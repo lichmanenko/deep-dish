@@ -120,6 +120,10 @@ body {
 }
 .dd-activity-options { flex-wrap: nowrap; }
 .dd-activity-options > button { padding-inline: 3px; white-space: nowrap; }
+@media (max-width: 360px) {
+  .dd-activity-options { gap: 4px; }
+  .dd-activity-options > button { flex-basis: auto; font-size: .75rem; padding-inline: 2px; }
+}
 .dd-seg button.on { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; }
 .dark .dd-seg button.on { color: #101B24; }
 
