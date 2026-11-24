@@ -51,7 +51,7 @@ async function setVisualViewport(page, height, top) {
 
 async function checkLayout(browser, url, { name, width, height, safe }) {
   const context = await browser.newContext({
-    ...devices['iPhone 16 Pro'],
+    ...devices[width > height ? 'iPhone 17 landscape' : 'iPhone 17'],
     viewport: { width, height },
     locale: 'ru-RU',
     timezoneId: 'Europe/Moscow',
