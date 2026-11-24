@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Deep Dish — интенсивность градиентов</title>
+<style>
+  :root {
+    --bg: #F7F9FB; --bg2: #E7EDF3; --bg3: #DCE6EF;
+    --glass: rgba(255,255,255,.60); --tx: #1B2026; --mut: #8B929C;
+    --acc: #44748F; --acc2: #6E9BBB; --acc-fg: #3A647B; --tr: rgba(27,32,38,.07);
+    --ok: #3F9B6C;
+  }
+  .dark {
+    --bg: #14171B; --bg2: #18202A; --bg3: #1E2A38;
+    --glass: rgba(255,255,255,.065); --tx: #E9EDF2; --mut: #969DAA;
+    --acc: #7FA8C9; --acc2: #AECBE2; --acc-fg: #9ABCD9; --tr: rgba(255,255,255,.09);
+    --ok: #6FC79A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    background: #E9EBEF; color: #1C1D20; padding: 20px 14px 70px;
+  }
+  .intro { max-width: 430px; margin: 0 auto 14px; }
+  .intro h1 { font-size: 24px; letter-spacing: -.02em; }
+  .intro p { margin-top: 6px; font-size: 14px; line-height: 1.5; color: #4A4C52; }
+  .toolbar { max-width: 430px; margin: 0 auto 20px; display: flex; gap: 8px; }
+  .tbtn {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 10px 14px; border-radius: 14px; border: none;
+    background: #fff; color: #33363D; box-shadow: 0 4px 12px rgba(20,22,28,.08); cursor: pointer;
+  }
+  .tbtn.acc { background: #33434F; color: #E9EDF2; }
+
+  .case { max-width: 430px; margin: 0 auto 30px; }
+  .case .cap { font-size: 13px; font-weight: 700; color: #5A5D66; margin-bottom: 8px; }
+  .frame {
+    position: relative; border-radius: 34px; overflow: hidden;
+    background:
+      radial-gradient(circle at 88% 6%, var(--r1c) var(--r1s), transparent var(--r1e)),
+      radial-gradient(circle at 6% 92%, var(--r2c) var(--r2s), transparent var(--r2e)),
+      linear-gradient(190deg, var(--bg) 0%, var(--bg2) 58%, var(--bg3) 100%);
+    color: var(--tx); padding: 22px 18px 24px;
+    box-shadow: 0 18px 44px rgba(15,18,26,.20);
+  }
+  /* Уровень 0 — как сейчас (радиалок нет) */
+  .g0 { --r1c: transparent; --r1s: 0px; --r1e: 0px; --r2c: transparent; --r2s: 0px; --r2e: 0px; }
+  /* Уровень ×1 */
+  .g1 { --r1c: rgba(127,168,201,.18); --r1s: 40px; --r1e: 300px; --r2c: rgba(110,155,187,.14); --r2s: 30px; --r2e: 260px; }
+  /* Уровень ×2 */
+  .g2 { --r1c: rgba(127,168,201,.34); --r1s: 60px; --r1e: 420px; --r2c: rgba(110,155,187,.26); --r2s: 50px; --r2e: 380px; }
+  .light.g1 { --r1c: rgba(68,116,143,.12); --r1s: 40px; --r1e: 300px; --r2c: rgba(110,155,187,.10); --r2s: 30px; --r2e: 260px; }
+  .light.g2 { --r1c: rgba(68,116,143,.22); --r1s: 60px; --r1e: 420px; --r2c: rgba(110,155,187,.18); --r2s: 50px; --r2e: 380px; }
+
+  .row1 { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 2px 16px; }
+  .row1 .h { font-size: 24px; font-weight: 700; }
+  .row1 .d { font-size: 13px; color: var(--mut); }
+  .ring-wrap {
+    display: flex; align-items: center; gap: 18px; padding: 18px 16px; border-radius: 26px;
+    background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); margin-bottom: 12px;
+  }
+  .ring { position: relative; width: 96px; height: 96px; flex: none; }
+  .ring svg { transform: rotate(-90deg); }
+  .ring .val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ring .val .n { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .ring .val .u { font-size: 10px; color: var(--mut); }
+  .kcal-info .big { font-size: 17px; font-weight: 700; }
+  .kcal-info .sub { font-size: 12px; color: var(--mut); margin-top: 3px; }
+  .chips { display: flex; gap: 9px; margin-bottom: 16px; }
+  .chip { flex: 1; text-align: center; padding: 11px 4px; border-radius: 19px; background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+  .chip .v { font-size: 15px; font-weight: 700; }
+  .chip .k { font-size: 11px; color: var(--mut); margin-top: 1px; }
+  .slot { padding: 15px 16px 12px; border-radius: 24px; background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); margin-bottom: 8px; }
+  .slot .hd { display: flex; justify-content: space-between; align-items: baseline; }
+  .slot .nm { font-size: 15px; font-weight: 650; display: flex; gap: 9px; align-items: baseline; }
+  .slot .nm .em { font-size: 16px; }
+  .slot .kc { font-size: 12.5px; color: var(--mut); }
+  .it { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--mut); padding: 6px 0 0 25px; }
+  .it .tt { color: var(--tx); font-weight: 550; }
+  .addfood {
+    margin-top: 14px; width: 100%; padding: 15px; border-radius: 22px; border: none;
+    background: linear-gradient(135deg, rgba(68,116,143,.16), rgba(110,155,187,.08)); color: var(--acc-fg);
+    font: inherit; font-size: 15px; font-weight: 650; cursor: pointer;
+  }
+  .note { max-width: 430px; margin: 0 auto; font-size: 12.5px; line-height: 1.5; color: #5A5D66; }
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Интенсивность радиальных градиентов</h1>
+  <p>Три одинаковых экрана «Сегодня»: как сейчас · сильнее ×1 · сильнее ×2. Радиальные пятна в углах, как в презентации BHC. Переключи тему и выбери уровень.</p>
+</div>
+<div class="toolbar">
+  <button class="tbtn acc" id="td">🌙 тёмная</button>
+  <button class="tbtn" id="tl">☀️ светлая</button>
+</div>
+
+<template id="tpl">
+  <div class="row1"><div class="h">Сегодня</div><div class="d">вс, 5 окт</div></div>
+  <div class="ring-wrap">
+    <div class="ring">
+      <svg width="96" height="96" viewBox="0 0 96 96">
+        <circle cx="48" cy="48" r="38" fill="none" stroke="var(--tr)" stroke-width="10"/>
+        <circle cx="48" cy="48" r="38" fill="none" stroke="url(#rgx)" stroke-width="10" stroke-linecap="round" stroke-dasharray="172.2 238.8"/>
+      </svg>
+      <div class="val"><div class="n">72%</div><div class="u">нормы</div></div>
+    </div>
+    <div class="kcal-info">
+      <div class="big">1 740 ккал</div>
+      <div class="sub">из 2 410 · осталось 670</div>
+    </div>
+  </div>
+  <div class="chips">
+    <div class="chip"><div class="v">132 г</div><div class="k">белки</div></div>
+    <div class="chip"><div class="v">78 г</div><div class="k">жиры</div></div>
+    <div class="chip"><div class="v">210 г</div><div class="k">углеводы</div></div>
+  </div>
+  <div class="slot">
+    <div class="hd"><div class="nm"><span class="em">🥐</span>Завтрак</div><div class="kc">460 ккал</div></div>
+    <div class="it"><span>08:10 · Овсянка на воде · 250 г</span><span class="tt">220</span></div>
+    <div class="it"><span>08:25 · Банан · 1 шт</span><span class="tt">105</span></div>
+  </div>
+  <div class="slot">
+    <div class="hd"><div class="nm"><span class="em">🍲</span>Обед</div><div class="kc">680 ккал</div></div>
+    <div class="it"><span>13:05 · Куриная грудка · 180 г</span><span class="tt">297</span></div>
+    <div class="it"><span>13:05 · Гречка варёная · 150 г</span><span class="tt">198</span></div>
+  </div>
+  <button class="addfood">+ Добавить еду</button>
+</template>
+
+<div id="root"></div>
+<p class="note">Примечание: в приложении позиции и масштабы радиальных пятен будут меняться от экрана к экрану (и плавно перетекать при переходах) — как ты и описывал. Здесь для сравнения позиция одна и та же.</p>
+
+<script>
+const LEVELS = [
+  { cls: 'g0', name: '0 · как сейчас' },
+  { cls: 'g1', name: '1 · сильнее ×1' },
+  { cls: 'g2', name: '2 · сильнее ×2' },
+];
+const root = document.getElementById('root');
+const tpl = document.getElementById('tpl');
+let theme = 'dark';
+
+for (const L of LEVELS) {
+  const caseEl = document.createElement('div');
+  caseEl.className = 'case';
+  caseEl.innerHTML = `<div class="cap">${L.name}</div>`;
+  const frame = document.createElement('div');
+  frame.className = `frame ${L.cls} ${theme}`;
+  // уникальный id градиента кольца
+  const node = tpl.content.cloneNode(true);
+  const svg = node.querySelector('svg');
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  const uid = 'rg' + L.cls + Math.random().toString(36).slice(2, 6);
+  defs.innerHTML = `<linearGradient id="${uid}" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="var(--acc)"/><stop offset="1" stop-color="var(--acc2)"/></linearGradient>`;
+  svg.insertBefore(defs, svg.firstChild);
+  svg.querySelector('circle[stroke="url(#rgx)"]').setAttribute('stroke', `url(#${uid})`);
+  frame.appendChild(node);
+  caseEl.appendChild(frame);
+  root.appendChild(caseEl);
+  if (L.cls !== 'g0') {} // no-op
+}
+
+// Переключение темы у всех фреймов
+function setTheme(dark) {
+  theme = dark ? 'dark' : 'light';
+  document.querySelectorAll('.frame').forEach(f => {
+    f.classList.toggle('dark', dark);
+    f.classList.toggle('light', !dark);
+  });
+  document.getElementById('td').classList.toggle('acc', dark);
+  document.getElementById('tl').classList.toggle('acc', !dark);
+}
+document.getElementById('td').onclick = () => setTheme(true);
+document.getElementById('tl').onclick = () => setTheme(false);
+</script>
+</body>
+</html>
