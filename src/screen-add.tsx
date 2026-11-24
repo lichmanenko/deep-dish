@@ -119,16 +119,16 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
   }
 
   return (
-    <div className="min-h-screen pb-28">
+    <div className="dd-screen dd-catalog">
       {/* Sticky: панель кнопок + поиск */}
       <div className="dd-addhead">
-        <div className="flex items-center gap-1 px-4 pt-5">
+        <div className="flex items-center gap-1">
           <button className="dd-arrow" onClick={onDone} aria-label="Назад">‹</button>
           <div className="flex-1" />
           <button className="dd-link-btn" onClick={() => setCreatingRecipe(true)}>+ рецепт</button>
           <button className="dd-link-btn" onClick={() => setCreatingFood(true)}>＋ продукт</button>
         </div>
-        <div className="px-4 pt-1 dd-searchwrap">
+        <div className="pt-1 dd-searchwrap">
           <input
             className="dd-input" aria-label="Поиск продуктов" placeholder={slot ? `Добавить в ${slot.name.toLowerCase()}…` : 'Поиск: название или штрихкод…'}
             value={q} onChange={e => setQ(e.target.value)} style={{ paddingRight: 40 }}
@@ -136,13 +136,13 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
           <button className="dd-scanbtn" aria-label="Сканировать штрихкод" onClick={() => { setScanEan(null); setScanOpen(true); track('scan_open'); }}>
             <Icons_Barcode />
           </button>
-          {q && <button className="dd-searchclear" style={{ right: 68 }} aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
-          {offBusy && <span className="dd-searchdot" style={{ right: 100 }} aria-hidden="true" />}
+          {q && <button className="dd-searchclear" aria-label="Очистить поиск" onClick={() => setQ('')}>✕</button>}
+          {offBusy && <span className="dd-searchdot" aria-hidden="true" />}
         </div>
       </div>
 
       {bjuHint && !searching && (
-        <div className="px-4">
+        <div>
           <div className="dd-card p-3 text-center text-[0.75rem] mb-3" style={{ color: 'var(--mut)' }}>
             <b style={{ color: 'var(--tx)' }}>Б</b> — белки · <b style={{ color: 'var(--tx)' }}>Ж</b> — жиры · <b style={{ color: 'var(--tx)' }}>У</b> — углеводы
             <button className="dd-link-btn" style={{ display: 'block', margin: '6px auto 0' }}
@@ -151,7 +151,7 @@ export function AddScreen({ date, slot, onDone }: AddScreenProps) {
         </div>
       )}
 
-      <div className="px-4">
+      <div>
         {mealList.length > 0 && (
           <Section title="🍽 Мои приёмы" id="meals" defaultOpen>
             {mealList.map(m => (

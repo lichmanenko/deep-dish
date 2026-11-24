@@ -52,8 +52,9 @@ jobs:
             http://127.0.0.1:8689/healthz >/dev/null
           python tools/health_smoke.py http://127.0.0.1:8689
       - run: npm run build
-      - run: npx playwright-core install --with-deps --only-shell chromium
+      - run: npx playwright-core install --with-deps --only-shell chromium webkit
       - run: npm run test:browser
+      - run: npm run test:mobile
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push'
         with:

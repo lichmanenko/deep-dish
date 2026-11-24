@@ -34,9 +34,7 @@ export function ScannerLayer({ onCode, onClose }: { onCode: (ean: string) => voi
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 90, background: '#0B1116',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      paddingTop: 'calc(24px + env(safe-area-inset-top))',
+      position: 'fixed', inset: 'var(--dd-view-top) 0 var(--dd-view-bottom)', zIndex: 90, background: '#0B1116',
     }}>
       <video ref={videoRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} playsInline muted />
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '100%', pointerEvents: 'none' }}>
@@ -53,7 +51,9 @@ export function ScannerLayer({ onCode, onClose }: { onCode: (ean: string) => voi
           {hit ? '✓ код считан: ' + hit : err ? err : 'Наведи камеру на штрихкод упаковки'}
         </div>
       </div>
-      <button className="dd-action" style={{ position: 'absolute', top: 'calc(14px + env(safe-area-inset-top))', right: 14, width: 44, padding: 0, flex: 'none' }} onClick={onClose}>✕</button>
+      <button type="button" className="dd-action" aria-label="Закрыть сканер"
+        style={{ position: 'absolute', top: 'calc(14px + var(--dd-safe-top))', right: 'var(--dd-gutter-right)', width: 44, height: 44, padding: 0 }}
+        onClick={onClose}>✕</button>
     </div>
   );
 }

@@ -13,15 +13,38 @@
   --r1: rgba(68,116,143,.12); --r2: rgba(110,155,187,.10);
 }
 
-:root { color-scheme: light; }
+:root {
+  color-scheme: light;
+  --dd-safe-top: env(safe-area-inset-top, 0px);
+  --dd-safe-right: env(safe-area-inset-right, 0px);
+  --dd-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --dd-safe-left: env(safe-area-inset-left, 0px);
+  --dd-gutter-left: calc(16px + var(--dd-safe-left));
+  --dd-gutter-right: calc(16px + var(--dd-safe-right));
+  --dd-tab-space: calc(78px + 1rem);
+  --dd-view-top: 0px;
+  --dd-view-bottom: 0px;
+  --dd-view-height: 100vh;
+}
+@supports (height: 100dvh) { :root { --dd-view-height: 100dvh; } }
 .dark { color-scheme: dark; }
-html, body, #root { height: 100%; }
-body { overflow-x: clip; } /* clip, не hidden: hidden делает body скролл-контейнером и ломает position: sticky (AlwaysOn-зона, v0.7.5) */
+html { -webkit-text-size-adjust: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   background: var(--bg); color: var(--tx);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+  overflow-wrap: anywhere;
+}
+
+.dd-screen {
+  min-height: 100vh; min-height: 100dvh;
+  padding: calc(18px + var(--dd-safe-top)) var(--dd-gutter-right)
+    calc(var(--dd-tab-space) + var(--dd-safe-bottom) + 12px) var(--dd-gutter-left);
+}
+.dd-catalog {
+  padding-top: 0;
+  padding-bottom: calc(20px + var(--dd-safe-bottom));
 }
 
 /* ── Фон приложения: линейный перелив + радиальные пятна (позиции — инлайн от пресета) ── */
@@ -45,7 +68,8 @@ body {
 .dd-num { font-variant-numeric: tabular-nums; }
 
 /* ── Кольцо ── */
-.dd-ring { position: relative; flex: none; }
+.dd-ring { position: relative; flex: none; max-width: 100%; aspect-ratio: 1; }
+.dd-ring > svg { width: 100%; height: auto; }
 .dd-ring-val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
 /* ── Нижний лист ── */
@@ -56,13 +80,17 @@ body {
 }
 .dd-sheet-bg.show { opacity: 1; pointer-events: auto; }
 .dd-sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 51;
+  position: fixed; left: 0; right: 0; bottom: var(--dd-view-bottom); z-index: 51;
   border-radius: 30px 30px 0 0;
   background: var(--panel);
-  padding: 14px 16px calc(24px + env(safe-area-inset-bottom));
+  padding: 14px var(--dd-gutter-right) calc(20px + var(--dd-safe-bottom)) var(--dd-gutter-left);
+  scroll-padding-block: 12px calc(12px + var(--dd-safe-bottom));
   transform: translateY(105%); transition: transform .4s cubic-bezier(.22,1,.36,1);
-  max-height: 88vh; overflow-y: auto;
+  max-height: 88vh;
+  max-height: min(88dvh, calc(var(--dd-view-height) - var(--dd-safe-top) - 12px));
 }
+.dd-sheet, .dd-topsheet, .dd-modal { overflow: auto; overscroll-behavior: contain; }
+.dd-sheet[aria-hidden="true"], .dd-topsheet[aria-hidden="true"] { visibility: hidden; }
 .dd-sheet.show { transform: translateY(0); }
 .dd-sheet.dragging { transition: none; }
 .dd-sheet-head { touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; min-height: 38px; position: relative; }
@@ -74,7 +102,7 @@ body {
 
 /* ── Действие (кнопка без кнопочности) ── */
 .dd-action {
-  display: block; width: 100%; padding: 15px; border-radius: 22px; border: none;
+  display: block; width: 100%; min-width: 0; padding: 15px; border-radius: 22px; border: none;
   background: linear-gradient(135deg, var(--veil), color-mix(in srgb, var(--veil) 55%, transparent));
   color: var(--acc-fg); font: inherit; font-size: 0.96875rem; font-weight: 650; cursor: pointer;
 }
@@ -86,8 +114,9 @@ body {
 .dd-seg { display: flex; gap: 6px; flex-wrap: wrap; }
 /* канон: кнопки сегментной группы делят ширину контейнера поровну (DESIGN.md §Контролы) */
 .dd-seg > button { flex: 1 1 0; }
+.dd-activity-options { flex: 4 1 15rem; }
 .dd-seg button {
-  font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 11px 13px; border-radius: 14px;
+  min-width: 0; font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 10px 8px; border-radius: 14px;
   border: none; background: var(--veil); color: var(--mut); cursor: pointer;
 }
 .dd-seg button.on { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; }
@@ -100,9 +129,15 @@ body {
 .dd-sw.on::after { transform: translateX(18px); }
 
 /* ── Модал ── */
-.dd-modal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(8,10,14,.36); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.dd-modal-bg {
+  position: fixed; inset: var(--dd-view-top) 0 var(--dd-view-bottom); z-index: 60;
+  background: rgba(8,10,14,.36); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px);
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(16px + var(--dd-safe-top)) var(--dd-gutter-right)
+    calc(16px + var(--dd-safe-bottom)) var(--dd-gutter-left);
+}
 .dd-modal {
-  width: 100%; max-width: 340px; border-radius: 26px; padding: 22px 20px;
+  width: 100%; max-width: 340px; max-height: 100%; border-radius: 26px; padding: 22px 20px;
   background: var(--panel);
   box-shadow: 0 20px 50px rgba(10,14,20,.25);
 }
@@ -133,7 +168,7 @@ body {
 .dd-item .sub { font-size: 0.71875rem; color: var(--mut); margin-top: 2px; }
 .dd-item .kc { font-weight: 550; } /* А7: колонка БЖУ — весом повыше */
 .dark .dd-item .sub, .dark .dd-item .kc { color: color-mix(in srgb, var(--mut) 68%, #fff); } /* аудит А1: вторичный текст тьмы выше порога */
-.dd-item .kc { font-size: 0.78125rem; color: var(--mut); white-space: nowrap; }
+.dd-item .kc { font-size: 0.78125rem; color: var(--mut); text-align: right; }
 .dd-item .dd-more {
   flex: none; width: 44px; height: 44px; margin: -5px -6px -5px 0; border-radius: 13px; border: none;
   background: transparent; color: var(--mut); font-size: 1.0625rem; font-weight: 700; cursor: pointer;
@@ -159,7 +194,7 @@ button:focus-visible, .dd-input:focus-visible { outline: 2px solid var(--acc-fg)
 .dd-input {
   width: 100%; height: 48px; padding: 0 14px; border-radius: 18px; border: none;
   background: var(--panel);
-  font: inherit; font-size: 0.9375rem; color: var(--tx); outline: none;
+  font: inherit; font-size: max(16px, 0.9375rem); color: var(--tx); outline: none;
   -webkit-text-fill-color: var(--tx);
   -webkit-appearance: none; appearance: none; min-width: 0;
 }
@@ -177,22 +212,24 @@ input[type=time].dd-input { padding: 0 8px; }
 .dd-slide { }
 .dd-slide.slide-from-r { animation: dd-in-r .26s ease; }
 .dd-slide.slide-from-l { animation: dd-in-l .26s ease; }
-@keyframes dd-in-r { from { opacity: .3; transform: translateX(22px); } to { opacity: 1; transform: none; } }
-@keyframes dd-in-l { from { opacity: .3; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
+@keyframes dd-in-r { from { opacity: .3; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+@keyframes dd-in-l { from { opacity: .3; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
 
 /* Факт-карточка (v0.7.6): крупный эмодзи, факт, источник; прочитанность — в facts.ts */
 .dd-fact-emoji { font-size: 2.375rem; line-height: 1; margin-bottom: 10px; }
 .dd-fact-text { font-size: 0.9375rem; line-height: 1.5; margin-bottom: 10px; }
 .dd-fact-src { display: block; font-size: 0.75rem; color: var(--mut); text-decoration: underline; margin-bottom: 12px; }
 /* тост достижений семьи */
-.dd-ach-toast { position: fixed; left: 16px; right: 16px; bottom: 72px; z-index: 60;
+.dd-ach-toast {
+  position: fixed; left: var(--dd-gutter-left); right: var(--dd-gutter-right);
+  bottom: calc(var(--dd-view-bottom) + var(--dd-safe-bottom) + var(--dd-tab-space)); z-index: 60;
   background: var(--panel); border-radius: 16px; padding: 10px 14px; display: flex; gap: 10px; align-items: center;
   box-shadow: 0 10px 30px rgba(0,0,0,.22); animation: dd-in-r .26s ease; }
 .dd-ach-toast .em { font-size: 1.5rem; flex: none; }
 
 /* AlwaysOn-зона «Сегодня» (В., 24.10): кольца+чипы+кнопка закреплены, приёмы скроллятся под ними */
 .dd-alwayson {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: var(--dd-safe-top); z-index: 20;
   /* В., 03.11 (второй заход): прямоугольник убираем совсем — верх зоны полностью прозрачен,
      матовость даёт только blur («фростед-гласс»), и лишь нижние ~20% мягко затемняются фоном,
      чтобы приёмы, проезжая под зоной, растворялись, а не упирались в край */
@@ -205,7 +242,7 @@ input[type=time].dd-input { padding: 0 8px; }
 
 /* ── Таб-бар: см. блок ниже (плотная панель + автоскрытие) ── */
 .dd-tab {
-  flex: 1; text-align: center; padding: 9px 4px; border-radius: 18px; font-size: 0.6875rem;
+  flex: 1 1 auto; min-width: 0; text-align: center; padding: 7px 2px; border-radius: 18px; font-size: 0.6875rem;
   color: var(--mut); background: transparent; border: none; font-weight: 600; cursor: pointer; font-family: inherit;
 }
 .dd-tab .ti { font-size: 1.875rem; display: flex; justify-content: center; margin-bottom: 2px; opacity: .92; line-height: 1; }
@@ -214,8 +251,9 @@ input[type=time].dd-input { padding: 0 8px; }
 /* ── Онбординг: экран без прокрутки, закреплённые шапка/подвал ── */
 .dd-onb {
   display: flex; flex-direction: column;
-  height: 100vh; height: 100dvh;
-  padding: calc(10px + env(safe-area-inset-top)) 18px calc(10px + env(safe-area-inset-bottom));
+  height: var(--dd-view-height);
+  padding: calc(10px + var(--dd-safe-top)) var(--dd-gutter-right)
+    calc(10px + var(--dd-safe-bottom)) var(--dd-gutter-left);
   overflow: hidden;
 }
 .dd-onb-head { flex: none; }
@@ -224,7 +262,8 @@ input[type=time].dd-input { padding: 0 8px; }
 
 /* ── Тост обновления ── */
 #dd-update-toast {
-  position: fixed; left: 14px; right: 14px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 70;
+  position: fixed; left: var(--dd-gutter-left); right: var(--dd-gutter-right);
+  bottom: calc(var(--dd-view-bottom) + var(--dd-tab-space) + var(--dd-safe-bottom)); z-index: 70;
   animation: dd-upd-in .3s ease;
 }
 #dd-update-toast.hide { opacity: 0; transition: opacity .3s; }
@@ -245,28 +284,32 @@ input[type=time].dd-input { padding: 0 8px; }
 
 /* ── Таб-бар: плотная панель + автоскрытие ── */
 .dd-tabbar {
-  position: fixed; left: 12px; right: 12px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 40;
+  position: fixed; left: calc(12px + var(--dd-safe-left)); right: calc(12px + var(--dd-safe-right));
+  bottom: calc(var(--dd-view-bottom) + var(--dd-safe-bottom) + 8px); z-index: 40;
   display: flex; gap: 4px; padding: 8px 10px;
   border-radius: 26px;
   background: var(--bg2);
   box-shadow: 0 10px 30px rgba(10,14,20,.22), 0 1px 0 rgba(255,255,255,.25) inset;
   transition: transform .35s cubic-bezier(.22,1,.36,1), opacity .3s;
 }
-.dd-tabbar.hidden { transform: translateY(140%); opacity: 0; pointer-events: none; }
+.dd-tabbar.hidden { transform: translateY(8px); opacity: 0; pointer-events: none; }
 .dd-tabbar.hidden:focus-within { transform: none; opacity: 1; pointer-events: auto; }
 .dd-tabzone {
-  position: fixed; left: 0; right: 0; bottom: 0; height: calc(34px + env(safe-area-inset-bottom)); z-index: 39;
+  position: fixed; left: var(--dd-safe-left); right: var(--dd-safe-right);
+  bottom: var(--dd-view-bottom); height: calc(34px + var(--dd-safe-bottom)); z-index: 39;
 }
 
 /* ── Экран добавления: sticky-шапка и чипы ── */
 .dd-cat-chip { font-size: 0.75rem; font-weight: 600; color: var(--mut); background: var(--tr); border: none; border-radius: 10px; padding: 5px 10px; cursor: pointer; }
 .dd-cat-chip.on { color: var(--acc-fg); background: var(--veil); }
 .dd-save-bar {
-  position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  position: fixed; left: var(--dd-gutter-left); right: var(--dd-gutter-right);
+  bottom: calc(var(--dd-view-bottom) + var(--dd-safe-bottom) + var(--dd-tab-space));
   z-index: 40; animation: dd-banner-in .25s ease;
 }
 .dd-banner {
-  position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 14px; right: 14px; z-index: 45;
+  position: fixed; top: calc(var(--dd-view-top) + var(--dd-safe-top) + 10px);
+  left: var(--dd-gutter-left); right: var(--dd-gutter-right); z-index: 45;
   border-radius: 18px; background: var(--panel);
   padding: 12px 14px 12px 16px; display: flex; align-items: center; gap: 10px;
   box-shadow: 0 12px 30px rgba(8, 10, 14, .18);
@@ -294,16 +337,19 @@ input[type=time].dd-input { padding: 0 8px; }
 }
 .dd-seg-btn.on { background: var(--veil); color: var(--acc-fg); font-weight: 700; }
 .dd-ingr-scroll { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
-.dd-searchwrap { position: relative; display: flex; align-items: stretch; gap: 8px; }
+.dd-searchwrap {
+  --dd-search-actions: calc(3rem + 8px);
+  position: relative; display: flex; align-items: stretch; gap: 8px;
+}
 .dd-searchwrap .dd-input { flex: 1 1 auto; min-width: 0; }
 .dd-searchdot {
-  position: absolute; right: 30px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: calc(var(--dd-search-actions) + 32px); top: 50%; transform: translateY(-50%);
   width: 7px; height: 7px; border-radius: 50%; background: var(--acc);
   animation: dd-dot 1s ease-in-out infinite;
 }
 @keyframes dd-dot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 .dd-searchclear {
-  position: absolute; right: 26px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: var(--dd-search-actions); top: 50%; transform: translateY(-50%);
   width: 30px; height: 30px; border-radius: 10px; border: none; background: none;
   color: var(--mut); font-size: 0.875rem; cursor: pointer;
 }
@@ -315,7 +361,8 @@ input[type=time].dd-input { padding: 0 8px; }
 .dd-addhead {
   position: sticky; top: 0; z-index: 30;
   background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 78%, transparent 100%);
-  padding-bottom: 6px;
+  margin-inline: calc(-1 * var(--dd-gutter-left)) calc(-1 * var(--dd-gutter-right));
+  padding: calc(10px + var(--dd-safe-top)) var(--dd-gutter-right) 6px var(--dd-gutter-left);
 }
 .dd-chiprow-title { font-size: 0.6875rem; font-weight: 700; color: var(--mut); margin: 6px 2px 5px; letter-spacing: .04em; text-transform: uppercase; }
 .dd-chiprow { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; scrollbar-width: none; }
@@ -364,14 +411,24 @@ input[type=time].dd-input { padding: 0 8px; }
 
 /* ── Верхняя доппанель (типовые порции при создании продукта) ── */
 .dd-topsheet {
-  position: fixed; left: 0; right: 0; top: 0; z-index: 51;
+  position: fixed; left: 0; right: 0; top: var(--dd-view-top); z-index: 51;
   border-radius: 0 0 30px 30px;
   background: var(--panel);
-  padding: calc(10px + env(safe-area-inset-top)) 16px 18px;
+  padding: calc(10px + var(--dd-safe-top)) var(--dd-gutter-right) 18px var(--dd-gutter-left);
   transform: translateY(-105%); transition: transform .4s cubic-bezier(.22,1,.36,1);
-  max-height: 78vh; overflow-y: auto;
+  max-height: 78vh;
+  max-height: min(78dvh, calc(var(--dd-view-height) - var(--dd-safe-bottom) - 12px));
 }
 .dd-topsheet.show { transform: translateY(0); }
+
+@media (max-height: 500px) {
+  .dd-alwayson { position: relative; top: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dd-slide.slide-from-r, .dd-slide.slide-from-l { animation: none; }
+  .dd-sheet, .dd-topsheet, .dd-tabbar { transition: none; }
+}
 
 /* ── Свайп-влево для удаления строки (ингредиент рецепта) ── */
 .dd-swiperow { position: relative; overflow: hidden; border-radius: 14px; }

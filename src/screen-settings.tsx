@@ -48,7 +48,7 @@ export function SettingsScreen({ settings, setSettings, onRestartOnboarding }: {
 
 
   return (
-    <div className="min-h-screen px-4 pt-6 pb-28" style={{ overflowX: 'hidden' }}>
+    <div className="dd-screen">
       <h1 className="text-xl font-bold mb-4">Настройки</h1>
 
       <div className="dd-card p-4 mb-4">

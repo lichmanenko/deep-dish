@@ -51,7 +51,7 @@ export function ProfileScreen() {
   useEffect(() => { ensureDayNorma(todayISO()).then(setDayNorma); }, [saved]);
 
   useEffect(() => { getProfile().then(p => { setPr(p ?? DEFAULT); setBaseline(JSON.stringify(p ?? DEFAULT)); setGoalWeightInput(p?.goalWeightKg != null ? String(p.goalWeightKg) : ''); }); }, []);
-  if (!pr) return <div className="min-h-screen" />;
+  if (!pr) return <div className="dd-screen" />;
 
   const norma = calcNorma(pr); // живой расчёт от черновика: норма меняется сразу при правке целей
   const liveNorma = norma;
@@ -86,7 +86,7 @@ export function ProfileScreen() {
   }
 
   return (
-    <div className="min-h-screen px-4 pt-6 pb-28">
+    <div className="dd-screen">
       <div className="flex items-center gap-3 mb-4">
         <button className="dd-avatar" aria-label="Сменить фото"
           onClick={() => fileAvatar.current?.click()}>
@@ -142,7 +142,7 @@ export function ProfileScreen() {
           </div>
         ) : (
         <div className="dd-seg" style={{ display: 'flex' }}>
-          <div style={{ flex: 1, display: 'flex', gap: 6, ...(dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : {}) }}>
+          <div className="dd-seg dd-activity-options" style={dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : undefined}>
             <button style={{ flex: 1 }} className={cx(pr.activity === 'sedentary' && 'on')} onClick={() => set({ activity: 'sedentary' })}>сидячая</button>
             <button style={{ flex: 1 }} className={cx(pr.activity === 'light' && 'on')} onClick={() => set({ activity: 'light' })}>лёгкая</button>
             <button style={{ flex: 1 }} className={cx(pr.activity === 'moderate' && 'on')} onClick={() => set({ activity: 'moderate' })}>средняя</button>

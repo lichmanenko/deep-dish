@@ -112,7 +112,7 @@ export function FamilyScreen() {
   }
 
   return (
-    <div className="min-h-screen px-4 pt-6 pb-28" style={{ overflowX: 'hidden' }}>
+    <div className="dd-screen">
       <h1 className="text-xl font-bold mb-4">Семья</h1>
 
       <div className="dd-card px-4 py-1">

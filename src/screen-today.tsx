@@ -132,17 +132,17 @@ export function TodayScreen({ date, setDate, onAdd, onOpenProfile, showTime }: {
   }, [], new Set<string>());
 
   return (
-    <div className="min-h-screen px-4 pt-6 pb-28" {...swipe}>
+    <div className="dd-screen" {...swipe}>
       {/* дата слева, лого справа — симметричные отступы от краёв */}
-      <div className="flex items-center justify-between mb-4 px-1">
-        <div className="flex items-center">
+      <div className="flex items-center justify-between gap-2 mb-4 px-1">
+        <div className="flex items-center min-w-0">
           <button className="dd-arrow" onClick={() => { setDate(shiftISO(date, -1)); setDir(1); }} aria-label="Предыдущий день">‹</button>
           <button onClick={() => setCalOpen(true)} className="text-left px-0.5">
             <div className="text-[1.125rem] font-bold tracking-tight leading-tight">{humanDate(date)}</div>
           </button>
           <button className="dd-arrow" onClick={() => { setDate(shiftISO(date, 1)); setDir(-1); }} aria-label="Следующий день">›</button>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <LogoMark size={22} />
           <span className="text-[1.125rem] font-bold tracking-tight" style={{ color: 'var(--tx)' }}>deep dish</span>
         </div>
@@ -157,9 +157,9 @@ export function TodayScreen({ date, setDate, onAdd, onOpenProfile, showTime }: {
           </div>
         )}
         <div className="dd-card p-4 mb-3">
-          <div className={cx('grid items-center', norma ? 'grid-cols-3' : 'grid-cols-1')}>
+          <div className={cx('grid items-center gap-2', norma ? 'grid-cols-3' : 'grid-cols-1')}>
             {norma && <div className="flex justify-center">
-              <button aria-label="Переключить кольцо" onClick={toggleRingMode} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+              <button className="w-full max-w-24" aria-label="Переключить кольцо" onClick={toggleRingMode}>
                 {ringMode === 'kcal' ? (
                   <Ring percent={percent}>
                     <div className="text-lg font-extrabold dd-num">{fmt(rest)}</div>
@@ -184,9 +184,9 @@ export function TodayScreen({ date, setDate, onAdd, onOpenProfile, showTime }: {
             {norma && <div className="flex justify-center">
               {goal && <GoalRing goal={goal} compact={compact} onTap={() => setGoalInfo(true)} />}
               {!goal && (
-                <button onClick={() => setGoalInfo(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                <button className="w-full max-w-24" onClick={() => setGoalInfo(true)}
                   aria-label="Как получить кольцо прогресса">
-                  <div className="dd-num text-center" style={{ width: 96, height: 96, borderRadius: '50%', border: '2px dashed var(--tr)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--mut)' }}>
+                  <div className="dd-num text-center aspect-square" style={{ borderRadius: '50%', border: '2px dashed var(--tr)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--mut)' }}>
                     <span style={{ fontSize: '1.25rem' }}>⚖️</span>
                     <span style={{ fontSize: '0.625rem', marginTop: 2 }}>взвешивайся —<br/>появится кольцо</span>
                   </div>
@@ -384,11 +384,11 @@ function SlotInfoSheet({ open, slot, entries, macroPct, date, marked, onClose, o
       )}
 
       {entries.length > 0 && !isSnack && (
-      <div className="dd-input-row items-end">
+      <div className="flex flex-col gap-2">
         <div className="flex-1 min-w-0">
           <input className="dd-input" value={name} onChange={e => setName(e.target.value)} placeholder="мой завтрак" />
         </div>
-        <button className="dd-action strong" style={{ flex: 'none' }} disabled={saving || entries.length === 0}
+        <button className="dd-action strong" disabled={saving || entries.length === 0}
           onClick={async () => { setSaving(true); await onSave(name.trim() || `мой ${slot.name.toLowerCase()}`); setSaving(false); }}>
           {saving ? 'Сохраняю…' : 'Сохранить приём пищи'}
         </button>
@@ -510,7 +510,7 @@ function MacroRing({ p, f, c, cap, children }: { p: number; f: number; c: number
       opacity={op} strokeDasharray={`${len} ${circ - len}`} strokeDashoffset={-a} strokeLinecap="butt" />;
   });
   return (
-    <div className="dd-ring" style={{ width: size, height: size }}>
+    <div className="dd-ring" style={{ width: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--tr)" strokeWidth={sw} />
         {arcs}
@@ -530,7 +530,7 @@ function GoalRing({ goal, compact, onTap }: { goal: GoalProgress; compact?: bool
     : goal.pct >= 190 ? '×2'
     : goal.pct + '%';
   return (
-    <button onClick={onTap} aria-label="Прогресс цели" className="dd-ring" style={{ width: size, height: size, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+    <button onClick={onTap} aria-label="Прогресс цели" className="dd-ring" style={{ width: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
         <circle cx={size / 2} cy={size / 2} r={R} fill="none" stroke="var(--tr)" strokeWidth={sw} />
         <circle cx={size / 2} cy={size / 2} r={R} fill="none" stroke={color} strokeWidth={sw} strokeLinecap={goal.pct > 100 ? 'butt' : 'round'}

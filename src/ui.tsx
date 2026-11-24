@@ -35,7 +35,7 @@ export function Ring({ percent, size = 96, stroke = 10, children }: { percent: n
   const p = Math.max(0, Math.min(100, percent));
   const id = useRef(`ring${Math.random().toString(36).slice(2, 8)}`).current;
   return (
-    <div className="dd-ring" style={{ width: size, height: size }}>
+    <div className="dd-ring" style={{ width: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
         <defs>
           <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">

@@ -1,5 +1,5 @@
 // Каркас: фон-радиальные пресеты с кросс-фейдом, таб-бар (Сегодня · Профиль · Настройки), онбординг
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { loadSettings, saveSettings, applyTheme, RADIALS, todayISO, type DeviceSettings } from './lib';
 import { track } from './store';
 import { computeBanner, dismissBanner, BANNER_CHECK_MS, type BannerInfo } from './banner';
@@ -15,7 +15,43 @@ import type { Slot } from './db';
 
 type Tab = 'today' | 'family' | 'profile' | 'settings';
 
+function useVisualViewport() {
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const root = document.documentElement;
+    let frame = 0;
+    const update = () => {
+      if (Math.abs(viewport.scale - 1) > 0.01) {
+        for (const name of ['top', 'bottom', 'height']) root.style.removeProperty(`--dd-view-${name}`);
+        return;
+      }
+      // iOS может сдвинуть видимую область, не меняя высоту CSS-вьюпорта.
+      const top = Math.max(0, viewport.offsetTop);
+      const bottom = Math.max(0, root.clientHeight - top - viewport.height);
+      root.style.setProperty('--dd-view-top', `${top}px`);
+      root.style.setProperty('--dd-view-bottom', `${bottom}px`);
+      root.style.setProperty('--dd-view-height', `${viewport.height}px`);
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+    update();
+    viewport.addEventListener('resize', schedule);
+    viewport.addEventListener('scroll', schedule);
+    window.addEventListener('resize', schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener('resize', schedule);
+      viewport.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
+  }, []);
+}
+
 export default function App() {
+  useVisualViewport();
   const [settings, setSettingsState] = useState<DeviceSettings>(() => loadSettings());
   const setSettings = (s: DeviceSettings) => { saveSettings(s); setSettingsState(s); };
 
@@ -83,7 +119,13 @@ export default function App() {
   }, []);
 
   // Кросс-фейд фоновых радиальных пресетов при смене экрана
-  const screen = addOpen ? 'add' : onboarding ? 'onboarding' : tab === 'settings' ? 'settings' : tab === 'family' ? 'family' : tab === 'profile' ? 'profile' : 'today';
+  const showOnboarding = !settings.onboarded || onboarding;
+  const screen = showOnboarding ? 'onboarding' : addOpen ? 'add' : tab;
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    lastY.current = 0;
+    setBarHidden(false);
+  }, [screen]);
   const bgA = useRef<HTMLDivElement>(null);
   const bgB = useRef<HTMLDivElement>(null);
   const useA = useRef(true);
@@ -101,7 +143,7 @@ export default function App() {
     useA.current = !useA.current;
   }, [screen]);
 
-  if (!settings.onboarded || onboarding) {
+  if (showOnboarding) {
     return (
       <>
         <div ref={bgA} className="dd-bg" />
