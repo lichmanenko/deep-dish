@@ -50,7 +50,6 @@ async function setVisualViewport(page, height, top) {
 }
 
 async function checkActivityLayout(page, nav, bounds, name) {
-  await button(page, 'Переключить кольцо').waitFor();
   await page.evaluate(() => new Promise((resolve, reject) => {
     const request = indexedDB.open('deepdish');
     request.onerror = () => reject(request.error);
@@ -86,7 +85,6 @@ async function checkActivityLayout(page, nav, bounds, name) {
   const trendBox = await trend.boundingBox();
   assert.ok(Math.abs(trendBox.width - (last.x + last.width - first.x)) <= 1,
     `${name}: «Тренд» должен занимать всю ширину ряда`);
-  await showNavigation(page);
 }
 
 async function checkLayout(browser, url, { name, width, height, safe }) {
@@ -124,7 +122,6 @@ async function checkLayout(browser, url, { name, width, height, safe }) {
     await button(page, 'Начать пользоваться').click();
 
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
-    await checkActivityLayout(page, nav, bounds, name);
     await button(nav, 'Настройки').click();
     await button(page, 'очень крупный').click();
     await button(page, /тёмная/).click();
@@ -142,8 +139,8 @@ async function checkLayout(browser, url, { name, width, height, safe }) {
 
     await showNavigation(page);
     await button(nav, 'Профиль').click();
-    await button(page, '⚡ тренд').waitFor();
-    await inside(button(page, '⚡ тренд'), { ...bounds, bottom: Infinity }, `${name}, активность с крупным текстом`);
+    await button(page, 'лёгкая').waitFor();
+    await inside(button(page, 'лёгкая'), { ...bounds, bottom: Infinity }, `${name}, активность`);
     await noHorizontalOverflow(page, width, `${name}, профиль`);
     await button(nav, 'Семья').click();
     await inside(page.getByRole('textbox', { name: 'Адрес сервера' }), bounds, `${name}, семья`);
@@ -208,6 +205,11 @@ async function checkLayout(browser, url, { name, width, height, safe }) {
       await edit.waitFor({ state: 'hidden' });
       await setVisualViewport(page, height, 0);
     }
+    await showNavigation(page);
+    await button(nav, 'Настройки').click();
+    await button(page, 'обычный').click();
+    await showNavigation(page);
+    await checkActivityLayout(page, nav, bounds, name);
     assert.deepEqual(errors, [], `${name}: ошибки браузера`);
     console.log(`OK: ${name}, ${width} × ${height}`);
   } catch (error) {
