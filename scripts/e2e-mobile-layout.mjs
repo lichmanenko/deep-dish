@@ -49,6 +49,46 @@ async function setVisualViewport(page, height, top) {
   await page.waitForFunction(height => document.documentElement.style.getPropertyValue('--dd-view-height') === `${height}px`, height);
 }
 
+async function checkActivityLayout(page, nav, bounds, name) {
+  await button(page, 'Переключить кольцо').waitFor();
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('deepdish');
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction('dayNormas', 'readwrite');
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onabort = () => { db.close(); reject(transaction.error); };
+      transaction.objectStore('dayNormas').put({
+        date: new Date().toLocaleDateString('sv-SE'),
+        kcal: 2000, p: 125, f: 67, c: 225, basis: 'adaptive',
+        detail: { tdeeAdaptive: 2000 }, createdAt: Date.now(),
+      });
+    };
+  }));
+  await button(nav, 'Профиль').click();
+  const trend = button(page, '⚡ тренд');
+  await trend.waitFor();
+  const controls = ['сидячая', 'лёгкая', 'средняя', 'высокая'].map(label => button(page, label));
+  const boxes = await Promise.all(controls.map(control => control.boundingBox()));
+  const first = boxes[0], last = boxes.at(-1);
+  assert.ok(first && last && boxes.every((box, index) => box
+    && Math.abs(box.y - first.y) <= 1 && Math.abs(box.height - first.height) <= 1
+    && (index === 0 || box.x >= boxes[index - 1].x + boxes[index - 1].width - 1)),
+  `${name}: четыре кнопки активности должны быть в одном ряду`);
+  for (const control of controls) {
+    assert.ok(await control.evaluate(element => element.scrollWidth <= element.clientWidth + 1),
+      `${name}: подпись активности выходит за границу кнопки`);
+  }
+  await inside(trend, {
+    ...bounds, top: first.y + first.height, bottom: Infinity, left: first.x, right: last.x + last.width,
+  }, `${name}, отдельный ряд тренда`);
+  const trendBox = await trend.boundingBox();
+  assert.ok(Math.abs(trendBox.width - (last.x + last.width - first.x)) <= 1,
+    `${name}: «Тренд» должен занимать всю ширину ряда`);
+  await showNavigation(page);
+}
+
 async function checkLayout(browser, url, { name, width, height, safe }) {
   const context = await browser.newContext({
     ...devices[width > height ? 'iPhone 17 landscape' : 'iPhone 17'],
@@ -84,6 +124,7 @@ async function checkLayout(browser, url, { name, width, height, safe }) {
     await button(page, 'Начать пользоваться').click();
 
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
+    await checkActivityLayout(page, nav, bounds, name);
     await button(nav, 'Настройки').click();
     await button(page, 'очень крупный').click();
     await button(page, /тёмная/).click();
@@ -101,8 +142,8 @@ async function checkLayout(browser, url, { name, width, height, safe }) {
 
     await showNavigation(page);
     await button(nav, 'Профиль').click();
-    await button(page, 'лёгкая').waitFor();
-    await inside(button(page, 'лёгкая'), { ...bounds, bottom: Infinity }, `${name}, активность`);
+    await button(page, '⚡ тренд').waitFor();
+    await inside(button(page, '⚡ тренд'), { ...bounds, bottom: Infinity }, `${name}, активность с крупным текстом`);
     await noHorizontalOverflow(page, width, `${name}, профиль`);
     await button(nav, 'Семья').click();
     await inside(page.getByRole('textbox', { name: 'Адрес сервера' }), bounds, `${name}, семья`);

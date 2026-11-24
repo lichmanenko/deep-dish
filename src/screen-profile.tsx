@@ -55,6 +55,7 @@ export function ProfileScreen() {
 
   const norma = calcNorma(pr); // живой расчёт от черновика: норма меняется сразу при правке целей
   const liveNorma = norma;
+  const adaptive = dayNorma?.basis === 'adaptive';
   const dirty = JSON.stringify({ ...pr, updatedAt: 0 }) !== JSON.stringify({ ...JSON.parse(baseline || '{}'), updatedAt: 0 });
   const set = (patch: Partial<Profile>) => { setPr({ ...pr, ...patch }); setSaved(false); };
 
@@ -133,27 +134,28 @@ export function ProfileScreen() {
 
       <div className="dd-card p-4 mb-4">
         <div className="dd-field-label" style={{ marginTop: 0 }}>Активность</div>
-        {(loadSettings().textScale ?? 1) > 1.05 && pr ? (
-          // крупные шрифты: только текущий режим, ряд из пяти кнопок не влезает (В., 18.10)
-          <div className="dd-seg" style={{ display: 'flex' }}>
-            <button style={{ flex: 1 }} className="on" aria-disabled="true">
-              {dayNorma?.basis === 'adaptive' ? '⚡ тренд' : ACT_LABELS[pr.activity]}
+        {(loadSettings().textScale ?? 1) > 1.05 ? (
+          <div className="dd-seg">
+            <button className="on" aria-disabled="true">
+              {adaptive ? '⚡ тренд' : ACT_LABELS[pr.activity]}
             </button>
           </div>
         ) : (
-        <div className="dd-seg" style={{ display: 'flex' }}>
-          <div className="dd-seg dd-activity-options" style={dayNorma?.basis === 'adaptive' ? { opacity: .45, pointerEvents: 'none' } : undefined}>
-            <button style={{ flex: 1 }} className={cx(pr.activity === 'sedentary' && 'on')} onClick={() => set({ activity: 'sedentary' })}>сидячая</button>
-            <button style={{ flex: 1 }} className={cx(pr.activity === 'light' && 'on')} onClick={() => set({ activity: 'light' })}>лёгкая</button>
-            <button style={{ flex: 1 }} className={cx(pr.activity === 'moderate' && 'on')} onClick={() => set({ activity: 'moderate' })}>средняя</button>
-            <button style={{ flex: 1 }} className={cx((pr.activity === 'active' || pr.activity === 'very_active') && 'on')} onClick={() => set({ activity: 'active' })}>высокая</button>
-          </div>
-          {dayNorma?.basis === 'adaptive' && (
-            <button style={{ flex: 1 }} className="on" aria-disabled="true">⚡ тренд</button>
-          )}
-        </div>
+          <>
+            <div className="dd-seg dd-activity-options" style={adaptive ? { opacity: .45, pointerEvents: 'none' } : undefined}>
+              <button className={cx(pr.activity === 'sedentary' && 'on')} onClick={() => set({ activity: 'sedentary' })}>сидячая</button>
+              <button className={cx(pr.activity === 'light' && 'on')} onClick={() => set({ activity: 'light' })}>лёгкая</button>
+              <button className={cx(pr.activity === 'moderate' && 'on')} onClick={() => set({ activity: 'moderate' })}>средняя</button>
+              <button className={cx((pr.activity === 'active' || pr.activity === 'very_active') && 'on')} onClick={() => set({ activity: 'active' })}>высокая</button>
+            </div>
+            {adaptive && (
+              <div className="dd-seg mt-1.5">
+                <button className="on" aria-disabled="true">⚡ тренд</button>
+              </div>
+            )}
+          </>
         )}
-        {dayNorma?.basis === 'adaptive' && (
+        {adaptive && (
           <div className="text-[0.6875rem] mt-1.5" style={{ color: 'var(--mut)' }}>
             расход берётся из твоей истории (что ел + как менялся вес), ручная активность пока не участвует
           </div>

@@ -114,11 +114,12 @@ body {
 .dd-seg { display: flex; gap: 6px; flex-wrap: wrap; }
 /* канон: кнопки сегментной группы делят ширину контейнера поровну (DESIGN.md §Контролы) */
 .dd-seg > button { flex: 1 1 0; }
-.dd-activity-options { flex: 4 1 15rem; }
 .dd-seg button {
   min-width: 0; font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 10px 8px; border-radius: 14px;
   border: none; background: var(--veil); color: var(--mut); cursor: pointer;
 }
+.dd-activity-options { flex-wrap: nowrap; }
+.dd-activity-options > button { padding-inline: 3px; white-space: nowrap; }
 .dd-seg button.on { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; }
 .dark .dd-seg button.on { color: #101B24; }
 
