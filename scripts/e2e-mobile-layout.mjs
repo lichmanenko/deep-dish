@@ -153,6 +153,20 @@ async function checkLayout(browser, url, { name, width, height, safe }) {
     await inside(fact, bounds, `${name}, факт`);
     await button(fact, 'Понятно').click();
     await inside(nav, bounds, `${name}, вкладки после клавиатуры`);
+    if (width === 402 && height === 874) {
+      await button(page, /Творог 5% ·/).click();
+      const edit = page.getByRole('dialog', { name: 'Запись', exact: true });
+      const weight = edit.getByRole('textbox', { name: 'Вес, г' });
+      assert.equal(await weight.inputValue(), '125,5');
+      await weight.fill('150,25');
+      await setVisualViewport(page, keyboardHeight, keyboardTop);
+      await edit.evaluate(element => { element.scrollTop = element.scrollHeight; });
+      await inside(button(edit, 'Сохранить'), { ...bounds, top: keyboardTop + top, bottom: keyboardTop + keyboardHeight - bottom },
+        `${name}, сохранение правки с клавиатурой`);
+      await button(edit, 'Сохранить').click();
+      await edit.waitFor({ state: 'hidden' });
+      await setVisualViewport(page, height, 0);
+    }
     assert.deepEqual(errors, [], `${name}: ошибки браузера`);
     console.log(`OK: ${name}, ${width} × ${height}`);
   } catch (error) {

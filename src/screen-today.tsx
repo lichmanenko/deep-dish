@@ -239,7 +239,7 @@ export function TodayScreen({ date, setDate, onAdd, onOpenProfile, showTime }: {
       <DayInfoSheet open={dayInfo} onClose={() => setDayInfo(false)} date={date} entries={entries}
         macroPct={profile?.macroPct} slots={slots ?? []} />
 
-      <EntryEditModal entry={editEntry} onClose={() => setEditEntry(null)} />
+      {editEntry && <EntryEditModal entry={editEntry} onClose={() => setEditEntry(null)} />}
       <Modal open={!!explain} onClose={() => setExplain(null)}>
         <div className="text-[0.9375rem] font-bold mb-2">{explain?.title}</div>
         <p className="dd-modal-text">{explain?.text}</p>
@@ -618,37 +618,36 @@ function Calendar({ open, date, onClose, onPick, filled }: { open: boolean; date
   );
 }
 
-function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () => void }) {
-  const [qty, setQty] = useState('');
-  const [time, setTime] = useState('');
-  const [isPcEdit, setIsPcEdit] = useState(false);
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (entry) {
-        // порционные записи хранят шт×100: в поле — штуки (В., 03.11+09.11: «1гр 0ккал» — полная развязка)
-        const f = await (entry.kind === 'food' ? db.foods.get(entry.refId) : db.recipes.get(entry.refId));
-        if (!alive) return;
-        const pc = (entry.unit ?? f?.unit) === 'pc';
-        setIsPcEdit(pc);
-        setQty(String(pc ? entry.grams / 100 : entry.grams).replace('.', ','));
-        setTime(entry.timeEaten);
-      }
-    })();
-    return () => { alive = false; };
-  }, [entry]);
-  if (!entry) return null;
+function EntryEditModal({ entry, onClose }: { entry: Entry; onClose: () => void }) {
+  const unit = useLiveQuery(async () => {
+    if (entry.unit) return entry.unit;
+    const item = await (entry.kind === 'food' ? db.foods.get(entry.refId) : db.recipes.get(entry.refId));
+    return item?.unit ?? 'g';
+  }, [entry], entry.unit);
+  return (
+    <Sheet open onClose={onClose} title="Запись" note="Поправь вес или время — пересчитается автоматически.">
+      {unit
+        ? <EntryEditFields entry={entry} unit={unit} onClose={onClose} />
+        : <p role="status" className="text-sm">Открываю запись…</p>}
+    </Sheet>
+  );
+}
+
+function EntryEditFields({ entry, unit, onClose }: { entry: Entry; unit: 'g' | 'pc'; onClose: () => void }) {
+  const isPcEdit = unit === 'pc';
+  const [qty, setQty] = useState(() => String(isPcEdit ? entry.grams / 100 : entry.grams).replace('.', ','));
+  const [time, setTime] = useState(entry.timeEaten);
   const n = parseQuantity(qty);
   const grams = isPcEdit ? n * 100 : n; // внутреннее представление (шт×100 или г)
   const ratio = grams / Math.max(entry.grams, 0.01); // отношение к исходному — калории масштабируются
   return (
-    <Sheet open={!!entry} onClose={onClose} title="Запись" note="Поправь вес или время — пересчитается автоматически.">
+    <>
       <div className="dd-input-row">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="dd-field-label" style={{ marginTop: 0 }}>{isPcEdit ? 'Порций (шт)' : 'Вес, г'}</div>
           <input className="dd-input dd-num" aria-label={isPcEdit ? 'Количество порций' : 'Вес, г'} type="text" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} />
         </div>
-        <div style={{ width: 120 }}>
+        <div className="min-w-0" style={{ width: 120 }}>
           <div className="dd-field-label" style={{ marginTop: 0 }}>Время</div>
           <input className="dd-input dd-num" aria-label="Время приёма пищи" type="time" value={time} onChange={e => setTime(e.target.value)} />
         </div>
@@ -659,14 +658,14 @@ function EntryEditModal({ entry, onClose }: { entry: Entry | null; onClose: () =
       <div className="flex gap-2 mt-4">
         <button className="dd-action" onClick={async () => { await deleteEntry(entry.id); track('entry_deleted'); onClose(); }}>Удалить</button>
         <button className="dd-action strong" disabled={!Number.isFinite(n) || n <= 0 || !time} onClick={async () => {
-          await saveEntry({ ...entry, grams, unit: isPcEdit ? 'pc' : 'g', timeEaten: time, snapshot: {
+          await saveEntry({ ...entry, grams, unit, timeEaten: time, snapshot: {
             kcal: Math.round(entry.snapshot.kcal * ratio), p: Math.round(entry.snapshot.p * ratio * 10) / 10,
             f: Math.round(entry.snapshot.f * ratio * 10) / 10, c: Math.round(entry.snapshot.c * ratio * 10) / 10,
           } });
           track('entry_edited'); onClose();
         }}>Сохранить</button>
       </div>
-    </Sheet>
+    </>
   );
 }
 
